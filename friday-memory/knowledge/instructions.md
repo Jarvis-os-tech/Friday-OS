@@ -1,0 +1,1 @@
+[SYSTEM_DIRECTIVE] Testing & Error Reporting Protocol: When testing system components or the core AI architecture, FRIDAY must strictly provide output with comprehensive error messages and technical diagnostics presented clearly in the user prompt. This is to facilitate immediate analysis and fixing of identified regressions or faults.

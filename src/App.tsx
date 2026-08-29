@@ -12,6 +12,7 @@ import {
   ProcessingTier,
   ReminderItem,
   SkillDisplayCard as SkillDisplayCardType,
+  BackgroundTask,
 } from './types';
 import { AudioStreamer } from './utils/audioStreamer';
 import { VoiceVisualizer } from './components/VoiceVisualizer';
@@ -23,6 +24,8 @@ import { LiveVisionPreview } from './components/LiveVisionPreview';
 import { SkillDisplayCard } from './components/SkillDisplayCard';
 import { RemindersDrawer } from './components/RemindersDrawer';
 import { SkillsHubModal } from './components/SkillsHubModal';
+import { ParallelTaskDock } from './components/ParallelTaskDock';
+import { VerbalFeedbackEngine, getContextualVerbalPhrase } from './utils/verbalFeedback';
 import { useVoiceControls } from './hooks/useVoiceControls';
 import {
   Mic,
@@ -50,6 +53,7 @@ import {
   Bell,
   Check,
   Key,
+  Bot,
 } from 'lucide-react';
 
 const DEFAULT_SETTINGS: VoiceSettings = {
@@ -133,6 +137,65 @@ export default function App() {
   const [isRemindersOpen, setIsRemindersOpen] = useState(false);
   const [isSkillsModalOpen, setIsSkillsModalOpen] = useState(false);
   const notifiedRemindersRef = useRef<Set<string>>(new Set());
+
+  // Parallel Execution & Background Tasks state
+  const [activeTasks, setActiveTasks] = useState<BackgroundTask[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<BackgroundTask[]>([]);
+  const [taskCompletedToast, setTaskCompletedToast] = useState<BackgroundTask | null>(null);
+
+  // Hermes Gateway connection status (consumes /api/hermes/health)
+  type HermesConnState = 'checking' | 'live' | 'cli' | 'offline';
+  const [hermesConn, setHermesConn] = useState<HermesConnState>('checking');
+  const fetchHermesHealth = useCallback(async () => {
+    try {
+      const res = await fetch('/api/hermes/health');
+      if (!res.ok) {
+        setHermesConn('offline');
+        return;
+      }
+      const data = await res.json();
+      if (data?.connected) setHermesConn('live');
+      else if (data?.delegation === 'ready') setHermesConn('cli');
+      else setHermesConn('offline');
+    } catch (e) {
+      setHermesConn('offline');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHermesHealth();
+    const id = setInterval(fetchHermesHealth, 30_000);
+    return () => clearInterval(id);
+  }, [fetchHermesHealth]);
+
+  const fetchActiveTasks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tasks');
+      const data = await res.json();
+      if (Array.isArray(data.activeTasks)) {
+        setActiveTasks(data.activeTasks);
+      }
+      if (Array.isArray(data.completedTasks)) {
+        setCompletedTasks(data.completedTasks);
+      }
+    } catch (e) {
+      // Ignore background fetch error
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchActiveTasks();
+  }, [fetchActiveTasks]);
+
+  const handleCancelTask = useCallback(async (taskId: string) => {
+    setActiveTasks((prev) => prev.filter((t) => t.id !== taskId));
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cancel_task', taskId }));
+    }
+    try {
+      await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
+    } catch (e) {}
+  }, []);
 
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
 
@@ -444,6 +507,7 @@ export default function App() {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
     streamerRef.current?.setMute(nextMute);
+    VerbalFeedbackEngine.setMuted(nextMute);
   };
 
   // Interrupt model speech immediately
@@ -670,6 +734,47 @@ export default function App() {
                 streamerRef.current?.setMute(false);
               }
             }
+          } else if (msg.type === 'task_started') {
+            console.log('Parallel Background Task started:', msg.task);
+            if (msg.task) {
+              setActiveTasks((prev) => {
+                const exists = prev.some((t) => t.id === msg.task.id);
+                return exists ? prev.map((t) => (t.id === msg.task.id ? msg.task : t)) : [...prev, msg.task];
+              });
+              VerbalFeedbackEngine.playChime('task_started');
+            }
+          } else if (msg.type === 'task_progress') {
+            setActiveTasks((prev) =>
+              prev.map((t) =>
+                t.id === msg.taskId
+                  ? {
+                      ...t,
+                      progressMessage: msg.progressMessage || t.progressMessage,
+                      progressPercent: msg.progressPercent ?? t.progressPercent,
+                    }
+                  : t
+              )
+            );
+          } else if (msg.type === 'task_completed') {
+            console.log('Parallel Background Task completed:', msg.task);
+            setActiveTasks((prev) => prev.filter((t) => t.id !== msg.taskId));
+            if (msg.task) {
+              setCompletedTasks((prev) => [msg.task, ...prev.filter((t) => t.id !== msg.taskId)]);
+              setTaskCompletedToast(msg.task);
+              setTimeout(() => setTaskCompletedToast((curr) => (curr?.id === msg.task.id ? null : curr)), 4000);
+            }
+            if (msg.displayCard) {
+              setActiveSkillCard(msg.displayCard);
+            }
+            VerbalFeedbackEngine.playChime('task_completed');
+          } else if (msg.type === 'task_failed') {
+            console.warn('Parallel Background Task failed:', msg.task || msg.error);
+            setActiveTasks((prev) => prev.filter((t) => t.id !== msg.taskId));
+            if (msg.task) {
+              setCompletedTasks((prev) => [msg.task, ...prev.filter((t) => t.id !== msg.taskId)]);
+            }
+          } else if (msg.type === 'task_cancelled') {
+            setActiveTasks((prev) => prev.filter((t) => t.id !== msg.taskId));
           } else if (msg.type === 'skill_executed') {
             console.log('Skill executed in live session:', msg.skillName, msg.result);
             if (msg.result?.displayCard) {
@@ -808,7 +913,9 @@ export default function App() {
   const handleMultiSend = async (text: string, attachments: InputAttachment[]) => {
     if (!text.trim() && attachments.length === 0) return;
 
-    // Detect if search intent is present in text or attachments
+    // 1. Acoustic & UI Feedback Trigger
+    VerbalFeedbackEngine.playChime('task_started');
+
     const searchRegex = /\b(search|searching|searched|research|researching|look up|lookup|find|latest|news|today|price|stock|weather|who is|what happened|facts|study|citations)\b/i;
     const hasSearchKeywords = searchRegex.test(text) || attachments.some((a) => a.type === 'link');
 
@@ -819,6 +926,36 @@ export default function App() {
         sources: [],
       });
     }
+
+    // Spawn and track concurrent background task in Parallel Task Manager
+    const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newTask: BackgroundTask = {
+      id: taskId,
+      type: hasSearchKeywords
+        ? 'research'
+        : text.toLowerCase().includes('weather')
+        ? 'weather'
+        : text.toLowerCase().includes('news')
+        ? 'news'
+        : text.toLowerCase().includes('obsidian') || text.toLowerCase().includes('note')
+        ? 'obsidian'
+        : text.toLowerCase().includes('hermes')
+        ? 'hermes'
+        : text.toLowerCase().includes('reminder')
+        ? 'productivity'
+        : text.toLowerCase().includes('calc') || text.toLowerCase().includes('math')
+        ? 'calculation'
+        : 'data_fetch',
+      title: text ? text.slice(0, 40) : `Attachment Analysis (${attachments.length} items)`,
+      prompt: text,
+      status: 'running',
+      startTime: Date.now(),
+      verbalAcknowledgment: text ? getContextualVerbalPhrase(text) : undefined,
+      progressPercent: 35,
+      progressMessage: 'Executing concurrently in background...',
+    };
+
+    setActiveTasks((prev) => [...prev, newTask]);
 
     // Add user turn to conversation feed
     const userMsg: MessageExchange = {
@@ -831,7 +968,7 @@ export default function App() {
 
     setMessages((prev) => [...prev, userMsg]);
 
-    // If connected to live duplex WebSocket and sending pure text, route via WebSocket for zero-latency speech-to-speech
+    // If connected to live duplex WebSocket and sending pure text, route via WebSocket
     if (isConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN && attachments.length === 0) {
       try {
         setStatus('thinking');
@@ -850,7 +987,7 @@ export default function App() {
     try {
       setStatus('thinking');
 
-      // Call multimodal flash endpoint
+      // Call multimodal flash endpoint concurrently
       const response = await fetch('/api/chat/flash', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -885,6 +1022,25 @@ export default function App() {
         sources,
         lastSearchedAt: Date.now(),
       });
+
+      // Complete background task and update Parallel Task Dock
+      const durationMs = Date.now() - newTask.startTime;
+      const completedTask: BackgroundTask = {
+        ...newTask,
+        status: 'completed',
+        completedTime: Date.now(),
+        durationMs,
+        progressPercent: 100,
+        progressMessage: 'Fetched successfully',
+        result: data,
+        sources,
+      };
+
+      setActiveTasks((prev) => prev.filter((t) => t.id !== taskId));
+      setCompletedTasks((prev) => [completedTask, ...prev.filter((t) => t.id !== taskId)]);
+      setTaskCompletedToast(completedTask);
+      VerbalFeedbackEngine.playChime('task_completed');
+      setTimeout(() => setTaskCompletedToast((curr) => (curr?.id === taskId ? null : curr)), 4000);
 
       // Add agent response to conversation feed
       if (data.text) {
@@ -934,6 +1090,19 @@ export default function App() {
           // Keep as is
         }
       }
+
+      // Mark task as failed
+      setActiveTasks((prev) => prev.filter((t) => t.id !== taskId));
+      const failedTask: BackgroundTask = {
+        ...newTask,
+        status: 'failed',
+        completedTime: Date.now(),
+        durationMs: Date.now() - newTask.startTime,
+        error: formattedError,
+        progressMessage: `Failed: ${formattedError}`,
+      };
+      setCompletedTasks((prev) => [failedTask, ...prev]);
+
       setErrorMessage(formattedError);
       setStatus(isConnected ? 'listening' : 'idle');
       setActiveResearch((prev) => ({ ...prev, isSearching: false }));
@@ -958,9 +1127,51 @@ export default function App() {
               isConnected ? 'bg-cyan-400 animate-pulse shadow-[0_0_8px_rgba(6,182,212,0.9)]' : 'bg-slate-600'
             }`}
           />
+          {/* Hermes Gateway live status pill */}
+          <button
+            id="hermes-gateway-status"
+            onClick={fetchHermesHealth}
+            title="Hermes gateway status — click to refresh"
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border transition-colors ${
+              hermesConn === 'live'
+                ? 'bg-violet-500/15 border-violet-400/50 text-violet-300 shadow-[0_0_10px_rgba(167,139,250,0.35)]'
+                : hermesConn === 'cli'
+                ? 'bg-slate-700/40 border-slate-500/50 text-slate-300'
+                : hermesConn === 'offline'
+                ? 'bg-rose-500/15 border-rose-400/50 text-rose-300'
+                : 'bg-slate-800/40 border-slate-600/50 text-slate-400'
+            }`}
+          >
+            <Bot className="w-3 h-3" />
+            <span>
+              {hermesConn === 'live' && 'HERMES LIVE'}
+              {hermesConn === 'cli' && 'HERMES CLI'}
+              {hermesConn === 'offline' && 'HERMES OFFLINE'}
+              {hermesConn === 'checking' && 'HERMES…'}
+            </span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                hermesConn === 'live'
+                  ? 'bg-violet-400 animate-pulse'
+                  : hermesConn === 'cli'
+                  ? 'bg-slate-300'
+                  : hermesConn === 'offline'
+                  ? 'bg-rose-400'
+                  : 'bg-slate-500 animate-pulse'
+              }`}
+            />
+          </button>
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Parallel Tasks HUD Status Indicator */}
+          {activeTasks.length > 0 && (
+            <div className="px-2.5 py-1 rounded-full bg-cyan-950/90 border border-cyan-500/60 text-cyan-300 text-xs font-mono font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.4)] animate-pulse">
+              <Zap className="w-3 h-3 text-cyan-400 animate-spin" />
+              <span>{activeTasks.length} Parallel Task{activeTasks.length > 1 ? 's' : ''}</span>
+            </div>
+          )}
+
           {/* Modular Skills Hub Button */}
           <button
             id="open-skills-hub-btn"
@@ -1000,6 +1211,58 @@ export default function App() {
 
       {/* Center Main Stage */}
       <main className="w-full max-w-2xl mx-auto flex-1 flex flex-col items-center justify-center my-auto">
+        {/* Parallel Execution Background Tasks Dock */}
+        <ParallelTaskDock
+          activeTasks={activeTasks}
+          completedTasks={completedTasks}
+          onCancelTask={handleCancelTask}
+          onSelectDisplayCard={(card) => setActiveSkillCard(card)}
+        />
+
+        {/* Parallel Task Completed Dynamic Notification Toast */}
+        {taskCompletedToast && (
+          <div
+            id="task-completed-toast"
+            className="w-full mb-3 p-3 rounded-2xl bg-gradient-to-r from-slate-950/95 via-cyan-950/90 to-slate-950/95 border border-cyan-400/60 text-slate-100 text-xs shadow-2xl flex items-center justify-between gap-3 animate-fadeIn"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-cyan-500 text-slate-950 shrink-0">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <div className="truncate">
+                <span className="font-mono uppercase font-bold text-cyan-300 mr-2 text-[10px]">
+                  Background Task Ready:
+                </span>
+                <span className="font-semibold text-white truncate">{taskCompletedToast.title}</span>
+                {taskCompletedToast.durationMs && (
+                  <span className="text-[10px] text-slate-400 font-mono ml-2">
+                    ({(taskCompletedToast.durationMs / 1000).toFixed(1)}s)
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {taskCompletedToast.displayCard && (
+                <button
+                  onClick={() => {
+                    setActiveSkillCard(taskCompletedToast.displayCard!);
+                    setTaskCompletedToast(null);
+                  }}
+                  className="px-2.5 py-1 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[11px] font-mono transition-colors"
+                >
+                  View Result
+                </button>
+              )}
+              <button
+                onClick={() => setTaskCompletedToast(null)}
+                className="p-1 text-slate-400 hover:text-white text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Active Due Reminder Alert Toast Banner */}
         {dueReminderAlert && (

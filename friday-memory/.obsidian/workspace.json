@@ -1,0 +1,224 @@
+{
+  "main": {
+    "id": "a6963ab4e96c0cc6",
+    "type": "split",
+    "children": [
+      {
+        "id": "57386446578eec96",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1f64aace0a17054c",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "INDEX.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "INDEX"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "5ca9eda9163396a5",
+    "type": "split",
+    "children": [
+      {
+        "id": "df797a7fce713828",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "57a3f832d90a7bfc",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "bd9c8ff4cc6c7705",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "8e40312386d4c3f0",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 200
+  },
+  "right": {
+    "id": "5e62de1395ff0ec3",
+    "type": "split",
+    "children": [
+      {
+        "id": "27f0ba75849fdcce",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "338001f9d1795a22",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "9f1d6bc10a8d8b7e",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "faeccc1b753ce884",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "5fd046bf8ef9b3ef",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "ae8faa0882a0227f",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "1f64aace0a17054c",
+  "lastOpenFiles": [
+    "Memory/Daily Logs/2026-06-21.md",
+    "Memory/Daily Logs/2026-06-26.md",
+    "Memory/Daily Logs/2026-06-28.md",
+    "Memory/Daily Logs/2026-06-29.md",
+    "Memory/Daily Logs/2026-06-27.md",
+    "Memory/Daily Logs/2026-07-01.md",
+    "Memory/Daily Logs/2026-07-02.md",
+    "Memory/Daily Logs/2026-07-03.md",
+    "Memory/Daily Logs/2026-07-04.md",
+    "Memory/obsidian-cli/SKILL.md",
+    "Memory/Task Memory/Analyze system-agent.ts token usage and define fallback strategy.md",
+    "Memory/Task Memory/at 1000, implement feature to Jarvis.md",
+    "Memory/User Preference Memory/Preferences.md",
+    "Memory/Daily Logs.md",
+    "Memory/Task Memory/Tasks.md",
+    "Memory/Task Memory.md",
+    "Memory/Task Memory/el mundo me dice, Nada que ver, ahí está. No hay afecto, ahí está..md",
+    "Memory/Task Memory/Develop multi-character and multi-personality agent concept..md",
+    "Memory/Daily Logs/2026-06-27.md.tmp",
+    "Memory/Task Memory/Develop agent creator agent concept..md",
+    "Memory/Task Memory/Develop 'console team' concept for agent debate and voting on outcomes..md",
+    "Memory/Task Memory/Consolidate all 'Vision Coding agent' tasks into a single section.md",
+    "Memory/Task Memory/Build Skill Registry.md",
+    "Memory/Task Memory/Build Memory Layer.md",
+    "Memory/Task Memory/Build 'agent War Room' dashboard showing status of all agents linked to JARVIS..md",
+    "Memory/Task Memory/Automatic Screen Sharing Control.md",
+    "Memory/Daily Logs/2026-06-18.md.tmp",
+    "Memory/Daily Logs/2026-06-24.md.tmp",
+    "Memory/Daily Logs/2026-06-26.md.tmp",
+    "Memory/Daily Logs/2026-06-21.md.tmp",
+    "Memory/Task Memory/Task Documentation Automation.md",
+    "Memory/Daily Logs/2026-06-19.md.tmp",
+    "scripts/memory_graph_linker.py",
+    "test_vault/Memory/Instruction Memory",
+    "test_vault/Memory/Task Memory",
+    "test_vault/Memory/Semantic Memory"
+  ]
+}

@@ -17,17 +17,17 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 ### 3. Run Application
 
-#### Desktop App (Live Dev):
-```powershell
-npm run electron:dev
-```
-
-#### Web Application:
-```powershell
+#### Web Application (Dev Mode):
+```bash
 npm run dev
 ```
 
 #### Production Build:
-```powershell
+```bash
 npm run build
+```
+
+#### Run Production Server:
+```bash
+npm start
 ```

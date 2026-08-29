@@ -163,3 +163,56 @@ export interface QuickTopic {
   expectedComplexity: 'Instant Flash' | 'Reasoning + Parallel Filter' | 'Deep Synthesis';
 }
 
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export type TaskCategory =
+  | 'weather'
+  | 'news'
+  | 'research'
+  | 'productivity'
+  | 'hermes'
+  | 'obsidian'
+  | 'calculation'
+  | 'data_fetch'
+  | 'system';
+
+export interface BackgroundTask {
+  id: string;
+  type: TaskCategory;
+  title: string;
+  prompt?: string;
+  status: TaskStatus;
+  startTime: number;
+  completedTime?: number;
+  durationMs?: number;
+  progressPercent?: number;
+  progressMessage?: string;
+  verbalAcknowledgment?: string;
+  speechSummary?: string;
+  result?: any;
+  displayCard?: SkillDisplayCard;
+  sources?: GroundingSource[];
+  error?: string;
+}
+
+export interface ParallelExecutionState {
+  activeTasks: BackgroundTask[];
+  completedTasks: BackgroundTask[];
+  isProcessing: boolean;
+  lastVerbalFeedback?: string;
+}
+
+export interface TaskProgressEvent {
+  taskId: string;
+  type: TaskCategory;
+  title: string;
+  progressMessage?: string;
+  progressPercent?: number;
+  status: TaskStatus;
+  verbalAcknowledgment?: string;
+  result?: any;
+  displayCard?: SkillDisplayCard;
+  durationMs?: number;
+  error?: string;
+}
+

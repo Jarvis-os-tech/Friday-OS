@@ -16,6 +16,7 @@ import {
   FileText,
   FilePlus,
   Sparkles,
+  Terminal,
 } from 'lucide-react';
 
 interface SkillDisplayCardProps {
@@ -289,7 +290,7 @@ export const SkillDisplayCard: React.FC<SkillDisplayCardProps> = ({
 
   // 5. Hermes Personal Assistant — FULL capabilities gateway
   if (type === 'hermes_response') {
-    const { text } = data || {};
+    const { text, prompt, sessionId } = data || {};
     return (
       <div className="w-full max-w-xl mx-auto my-3 rounded-2xl bg-gradient-to-br from-slate-900/95 via-violet-950/40 to-slate-900/95 border border-violet-500/30 p-4 text-slate-100 shadow-xl backdrop-blur-md animate-fadeIn">
         <div className="flex items-center justify-between pb-2.5 border-b border-violet-500/20">
@@ -301,7 +302,9 @@ export const SkillDisplayCard: React.FC<SkillDisplayCardProps> = ({
               <span className="text-xs font-mono font-semibold uppercase tracking-wider text-violet-300">
                 Hermes • Full Access Gateway
               </span>
-              <h3 className="text-xs text-slate-300 truncate max-w-xs">{title}</h3>
+              <h3 className="text-xs text-slate-300 truncate max-w-xs" title={title}>
+                {title}
+              </h3>
             </div>
           </div>
           {onDismiss && (
@@ -310,12 +313,36 @@ export const SkillDisplayCard: React.FC<SkillDisplayCardProps> = ({
             </button>
           )}
         </div>
+
+        {/* The exact command FRIDAY delegated to Hermes */}
+        {prompt && (
+          <div className="my-2.5 rounded-xl bg-slate-950/70 border border-violet-500/15 p-2.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-violet-300/80 mb-1">
+              <Terminal className="w-3 h-3" />
+              <span>FRIDAY sent to Hermes</span>
+            </div>
+            <div className="text-xs leading-relaxed whitespace-pre-wrap text-slate-200">{prompt}</div>
+          </div>
+        )}
+
+        {/* Hermes answer */}
         <div className="my-2.5 text-xs leading-relaxed whitespace-pre-wrap text-slate-200 max-h-72 overflow-y-auto pr-1">
           {text || 'No response'}
         </div>
-        <div className="flex items-center gap-1.5 mt-2 text-[10px] font-mono text-violet-300/70">
-          <Sparkles className="w-3 h-3" />
-          <span>Routed via Hermes • memory, vault, tools, system — full capabilities</span>
+
+        <div className="flex items-center justify-between gap-2 mt-2 text-[10px] font-mono text-violet-300/70">
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3" />
+            <span>Routed via Hermes • full capabilities</span>
+          </div>
+          {sessionId && (
+            <span
+              className="px-1.5 py-0.5 rounded bg-violet-500/10 border border-violet-500/30 text-violet-300/80"
+              title="Hermes session id — open with: hermes chat --resume <id>"
+            >
+              {sessionId.slice(0, 14)}
+            </span>
+          )}
         </div>
       </div>
     );

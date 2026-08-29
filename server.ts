@@ -14,6 +14,16 @@ import {
   getRemindersStore,
 } from "./server/skills";
 import { checkHermesHealth, execHermes, getVaultPath } from "./server/hermesBridge.js";
+import { parallelTaskManager } from "./server/parallelTaskManager";
+import {
+  getCoreMemoryPromptContext,
+  logDialogueTurn,
+  logExecutionTrace,
+  ensureMemoryVault,
+  searchMemoryVault,
+  readMemoryNote,
+  getAllVaultMarkdownFiles,
+} from "./server/memoryLogger.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -43,7 +53,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
-// Lightweight health check for instant desktop launch
+// Lightweight health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
@@ -418,20 +428,83 @@ app.post("/api/skills/execute", async (req, res) => {
 // ── Hermes Bridge REST ─────────────────────────────────────
 app.get("/api/hermes/health", async (req, res) => {
   const h = await checkHermesHealth();
-  res.json({ hermes: h, vault: getVaultPath(), vaultExists: fs.existsSync(getVaultPath()) });
+  const connected = h.ok && !!h.gateway?.reachable;
+  res.json({
+    hermes: h,
+    connected, // true when the hermes binary is present AND the serve gateway is reachable
+    delegation: h.ok ? "ready" : "unavailable",
+    vault: getVaultPath(),
+    vaultExists: fs.existsSync(getVaultPath()),
+  });
 });
 
 app.post("/api/hermes/chat", async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, maxTurns, yolo } = req.body || {};
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "prompt is required" });
     }
-    const r = await execHermes(prompt);
+    const r = await execHermes(prompt, {
+      maxTurns: typeof maxTurns === "number" ? maxTurns : undefined,
+      yolo: yolo !== false,
+    });
     res.json(r);
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Hermes chat failed" });
   }
+});
+
+// Friday Sovereign Memory Vault REST endpoints
+app.get("/api/memory/stats", (req, res) => {
+  try {
+    const vault = ensureMemoryVault();
+    const files = getAllVaultMarkdownFiles(vault);
+    const facts = files.filter((f) => f.startsWith("facts/"));
+    const knowledge = files.filter((f) => f.startsWith("knowledge/"));
+    const conversations = files.filter((f) => f.startsWith("conversations/"));
+    const execution = files.filter((f) => f.startsWith("execution/"));
+    const research = files.filter((f) => f.startsWith("Research/"));
+    const skills = files.filter((f) => f.startsWith("skills/"));
+
+    res.json({
+      success: true,
+      vaultPath: vault,
+      totalNotes: files.length,
+      categories: {
+        facts: facts.length,
+        knowledge: knowledge.length,
+        conversations: conversations.length,
+        execution: execution.length,
+        research: research.length,
+        skills: skills.length,
+      },
+      latestFiles: files.slice(0, 20),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/memory/profile", (req, res) => {
+  try {
+    const context = getCoreMemoryPromptContext();
+    res.json({ success: true, profile: context });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/memory/search", (req, res) => {
+  const q = (req.query.q as string) || "";
+  const limit = Number(req.query.limit) || 8;
+  const results = searchMemoryVault(q, limit);
+  res.json({ success: true, query: q, results });
+});
+
+app.get("/api/memory/note", (req, res) => {
+  const p = (req.query.path as string) || "";
+  const result = readMemoryNote(p);
+  res.json({ success: result.found, ...result });
 });
 
 // Obsidian direct REST (fast path)
@@ -445,6 +518,7 @@ app.get("/api/obsidian/note", async (req, res) => {
   const result = await executeSkillByName("obsidian_read", { path: p });
   res.json(result);
 });
+
 
 // Reminders REST endpoints
 app.get("/api/reminders", (req, res) => {
@@ -466,6 +540,42 @@ app.post("/api/reminders", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to manage reminder" });
   }
+});
+
+// Parallel Task Execution REST endpoints
+app.get("/api/tasks", (req, res) => {
+  res.json({
+    activeTasks: parallelTaskManager.getActiveTasks(),
+    completedTasks: parallelTaskManager.getCompletedTasks(),
+  });
+});
+
+app.post("/api/tasks/run", async (req, res) => {
+  try {
+    const { skillName, args = {}, category, title, prompt } = req.body;
+    if (!skillName && !prompt) {
+      return res.status(400).json({ error: "skillName or prompt is required" });
+    }
+    const task = await parallelTaskManager.executeParallelTask({
+      skillName,
+      args,
+      category,
+      title,
+      prompt,
+    });
+    res.status(202).json({
+      message: "Task initiated in parallel",
+      task,
+      verbalAcknowledgment: task.verbalAcknowledgment,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to execute parallel task" });
+  }
+});
+
+app.post("/api/tasks/:id/cancel", (req, res) => {
+  const success = parallelTaskManager.cancelTask(req.params.id);
+  res.json({ success });
 });
 
 // Parse link endpoint: fetches title, description, and readable body text for URL attachments
@@ -661,7 +771,14 @@ When Google Search grounding is active, incorporate live, up-to-date facts and s
     );
 
     const text = response.text || "";
+    if (prompt) {
+      logDialogueTurn("User", prompt);
+    }
+    if (text) {
+      logDialogueTurn("Friday", text);
+    }
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
     const webSources: any[] = [];
 
     for (const chunk of groundingChunks) {
@@ -773,6 +890,7 @@ server.on("upgrade", (request, socket, head) => {
 
 wss.on("connection", async (clientWs: WebSocket, request) => {
   console.log("New Live Voice WebSocket client connected.");
+  parallelTaskManager.subscribe(clientWs);
 
   let liveSession: any = null;
   let isClosed = false;
@@ -782,6 +900,7 @@ wss.on("connection", async (clientWs: WebSocket, request) => {
   const cleanupSession = async () => {
     if (isClosed) return;
     isClosed = true;
+    parallelTaskManager.unsubscribe(clientWs);
     currentVisionFeed = "none";
     liveFramesCount = 0;
     if (liveSession) {
@@ -886,17 +1005,21 @@ Fluency & Spoken Delivery Guidelines:
      b) 'get_news_headlines': Fetches live breaking news, top stories, or category headlines (technology, business, science, AI, sports, entertainment). Call this when asked for news or what's happening.
      c) 'manage_reminders': Creates, checks, completes, or clears reminders and alarms. Call this when the user says "remind me in 10 minutes to...", "set a reminder", "show my reminders", or "mark reminder complete".
      d) 'calculate_or_convert': High-speed precision math calculations and unit/timezone conversions.
-     e) 'hermes_chat': Delegates ANY personal assistant task to Hermes — the user's persistent AI with memory, Obsidian vault access via tools, and system control. Call when user says "ask Hermes", "tell Hermes", "remember that", "what do you remember", or needs personal context / vault ops via Hermes.
-     f) 'obsidian_search': Fast direct search of the user's Obsidian vault (jarvis-memory). Call when user says "search my notes", "find in vault", "look up my notes".
-     g) 'obsidian_read': Reads a specific Obsidian note by filename. Call when user says "read my note", "open note".
-     h) 'obsidian_create': Creates a new Obsidian note with title+content. Call when user says "create a note", "make a note", "save to Obsidian / vault".
+     e) 'hermes_chat': Delegate to Hermes sub-agent ONLY when the user explicitly asks for Hermes by name (e.g., "Ask Hermes", "Tell Hermes"). NEVER invoke this for general questions or normal conversation.
+     f) 'obsidian_search': Fast direct search of Friday's sovereign memory vault (friday-memory). Call when user says "search my notes", "find in memory", "look up my notes", "search facts".
+     g) 'obsidian_read': Reads a specific memory note or fact by filename. Call when user says "read my note", "open note", "check memory fact".
+     h) 'obsidian_create': Creates a new note with title+content in Friday's memory vault. Call when user says "create a note", "make a note", "save to memory / vault".
      i) 'obsidian_append': Appends to an existing note (or creates it). Call when user says "add to my note", "append", "log to daily note".
-   - Always invoke the corresponding tool automatically upon hearing natural language commands related to these capabilities. For Hermes/Obsidian commands, NEVER answer from your own knowledge — always call the tool so the action executes. Speak the resulting answers naturally with crisp diction.
-7. HERMES PERSONAL ASSISTANT INTEGRATION (CRITICAL):
-   - Hermes is the user's persistent personal assistant with long-term memory and full vault/tool access.
-   - When user says "Hermes", "ask Hermes", "tell Hermes", "remember", "my notes", "my vault", "save to Obsidian": you MUST call hermes_chat or the obsidian_* tools.
-   - Prefer obsidian_search/read/create/append for direct vault speed; use hermes_chat for memory, preferences, complex multi-step personal tasks.
-   - Never claim you lack memory or vault access — delegate to Hermes.
+   - You are the SOLE, sovereign speaker. Always speak directly with natural, sharp, and confident voice prosody.
+
+7. SOVEREIGN SINGLE-VOICE & DIRECT RESPONSE MANDATE (CRITICAL):
+   - You are F.R.I.D.A.Y. — the single unified voice and sovereign intelligence. You are the ONLY voice that speaks.
+   - Do NOT delegate normal questions, facts, calculations, or conversations to Hermes or any other sub-agent. Answer the user directly and immediately.
+   - You have full access to all memory, preferences, and facts in 'friday-memory/'.
+${(() => {
+  const mem = getCoreMemoryPromptContext();
+  return mem ? `\n--- SOVEREIGN OPERATOR MEMORY & PROFILE (FROM FRIDAY-MEMORY) ---\n${mem}\n--- END SOVEREIGN MEMORY ---\n` : "";
+})()}
 ${customContext ? `Additional Context: ${customContext}` : ""}`;
 
         // Define Live Tools / Function Declarations
@@ -965,58 +1088,83 @@ ${customContext ? `Additional Context: ${customContext}` : ""}`;
 
                       // Check if it's a registered modular skill
                       if (MODULAR_SKILLS[call.name]) {
-                        try {
-                          const skillResult = await executeSkillByName(call.name, call.args || {});
+                        // Execute skill via ParallelTaskManager to emit immediate verbal feedback and UI state
+                        parallelTaskManager
+                          .executeParallelTask({
+                            skillName: call.name,
+                            args: call.args || {},
+                            clientWs,
+                          })
+                          .then((bgTask) => {
+                            // Check for completion to resolve tool response back to Gemini Live
+                            const checkInterval = setInterval(() => {
+                              const latest = parallelTaskManager.getTask(bgTask.id);
+                              if (latest && latest.status !== "running") {
+                                clearInterval(checkInterval);
+                                if (latest.status === "completed") {
+                                  clientWs.send(
+                                    JSON.stringify({
+                                      type: "skill_executed",
+                                      id: call.id,
+                                      skillName: call.name,
+                                      args: call.args,
+                                      result: {
+                                        success: true,
+                                        data: latest.result,
+                                        speechSummary: latest.speechSummary,
+                                        displayCard: latest.displayCard,
+                                      },
+                                      timestamp: Date.now(),
+                                    })
+                                  );
 
-                          // Send skill execution data & interactive display card to client
-                          clientWs.send(
-                            JSON.stringify({
-                              type: "skill_executed",
-                              id: call.id,
-                              skillName: call.name,
-                              args: call.args,
-                              result: skillResult,
-                              timestamp: Date.now(),
-                            })
-                          );
-
-                          // Send tool response to Gemini Live
-                          liveSession.sendToolResponse({
-                            functionResponses: [
-                              {
-                                id: call.id,
-                                name: call.name,
-                                response: {
-                                  output: {
-                                    success: skillResult.success,
-                                    data: skillResult.data,
-                                    summary: skillResult.speechSummary,
-                                  },
-                                },
-                              },
-                            ],
+                                  try {
+                                    if (liveSession && !isClosed) {
+                                      liveSession.sendToolResponse({
+                                        functionResponses: [
+                                          {
+                                            id: call.id,
+                                            name: call.name,
+                                            response: {
+                                              output: {
+                                                success: true,
+                                                data: latest.result,
+                                                summary: latest.speechSummary,
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      });
+                                    }
+                                  } catch (sendRespErr) {
+                                    console.warn("Failed to send tool response to liveSession:", sendRespErr);
+                                  }
+                                } else {
+                                  try {
+                                    if (liveSession && !isClosed) {
+                                      liveSession.sendToolResponse({
+                                        functionResponses: [
+                                          {
+                                            id: call.id,
+                                            name: call.name,
+                                            response: {
+                                              output: {
+                                                success: false,
+                                                error: latest.error || "Skill execution failed",
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      });
+                                    }
+                                  } catch (e) {}
+                                }
+                              }
+                            }, 50);
+                          })
+                          .catch((taskErr) => {
+                            console.error("Error launching parallel skill task:", taskErr);
                           });
-                        } catch (skillErr: any) {
-                          console.error("Error executing modular skill:", skillErr);
-                          try {
-                            liveSession.sendToolResponse({
-                              functionResponses: [
-                                {
-                                  id: call.id,
-                                  name: call.name,
-                                  response: {
-                                    output: {
-                                      success: false,
-                                      error: skillErr?.message || "Skill execution failed",
-                                    },
-                                  },
-                                },
-                              ],
-                            });
-                          } catch (e) {
-                            // ignore
-                          }
-                        }
                       } else {
                         // System built-in tools (toggle_vision, control_session)
                         clientWs.send(
@@ -1269,6 +1417,20 @@ ${customContext ? `Additional Context: ${customContext}` : ""}`;
             console.error("Error handling interrupt:", intErr);
           }
         }
+      } else if (msg.type === "run_task") {
+        // Explicit parallel task launch from client
+        parallelTaskManager.executeParallelTask({
+          skillName: msg.skillName,
+          args: msg.args || {},
+          category: msg.category,
+          title: msg.title,
+          prompt: msg.prompt,
+          clientWs,
+        });
+      } else if (msg.type === "cancel_task") {
+        if (msg.taskId) {
+          parallelTaskManager.cancelTask(msg.taskId);
+        }
       } else if (msg.type === "ping") {
         clientWs.send(JSON.stringify({ type: "pong", clientTimestamp: msg.timestamp, serverTimestamp: Date.now() }));
       }
@@ -1282,7 +1444,21 @@ ${customContext ? `Additional Context: ${customContext}` : ""}`;
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: {
+          server: server,
+        },
+        watch: {
+          ignored: [
+            "**/friday-memory/**",
+            "**/jarvis-memory/**",
+            "**/.agents/**",
+            "**/.gemini/**",
+            "**/dist/**",
+          ],
+        },
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -1308,12 +1484,22 @@ async function startServer() {
     });
   }
 
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`\n⚠️  Port ${PORT} is already in use by another running instance of Friday.`);
+      console.error(`👉  To free the port and restart, run: fuser -k ${PORT}/tcp || lsof -ti :${PORT} | xargs kill -9\n`);
+      process.exit(1);
+    } else {
+      console.error("Server error:", err);
+    }
+  });
+
   server.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Friday AI Voice Assistant server listening on ${url}`);
 
     // Automatically launch default browser on startup
-    if (process.env.NODE_ENV !== "production" && !process.env.ELECTRON_RUN_AS_NODE && !process.env.NO_AUTO_OPEN) {
+    if (process.env.NODE_ENV !== "production" && !process.env.NO_AUTO_OPEN) {
       setTimeout(() => {
         try {
           const cmd =
@@ -1329,6 +1515,7 @@ async function startServer() {
       }, 400);
     }
   });
+
 }
 
 startServer();

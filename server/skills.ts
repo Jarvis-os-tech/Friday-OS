@@ -618,27 +618,27 @@ export const calculationSkill: ModularSkill = {
 // ─────────────────────────────────────────────────────────────
 export const hermesChatSkill: ModularSkill = {
   name: "hermes_chat",
-  displayName: "Hermes Personal Assistant",
+  displayName: "Hermes Sub-Agent Delegation",
   description:
-    "Delegate any personal assistant task to Hermes — memory, research, reminders, file ops, Obsidian vault via Hermes tools. Use when user says 'ask Hermes', 'tell Hermes', 'remember that', or needs personal context.",
+    "Delegate a task to Hermes sub-agent ONLY when user explicitly asks for Hermes by name (e.g. 'ask Hermes', 'tell Hermes'). Do NOT use for general queries.",
   icon: "Bot",
   category: "System",
   declaration: {
     name: "hermes_chat",
     description:
-      "Delegate a task to the Hermes personal assistant. Use for 'ask Hermes to...', 'remember that...', 'search my notes via Hermes', personal preferences, or any task needing vault/memory access through Hermes.",
+      "Delegate a query to Hermes sub-agent ONLY when the user explicitly mentions Hermes by name (e.g. 'ask Hermes...', 'tell Hermes...'). Do NOT call this tool for general questions, memory lookups, or normal conversations — Friday handles them directly.",
     parameters: {
       type: Type.OBJECT,
       properties: {
         prompt: {
           type: Type.STRING,
-          description:
-            "The full user task to delegate to Hermes, e.g. 'Create an Obsidian note titled Meeting 2026-08-29 with summary...' or 'What do you remember about my preferences?'",
+          description: "The specific prompt or command explicitly directed to Hermes.",
         },
       },
       required: ["prompt"],
     },
   },
+
   execute: async (args: { prompt: string }) => {
     const task = args.prompt?.trim();
     if (!task) {
@@ -655,42 +655,45 @@ export const hermesChatSkill: ModularSkill = {
     const speech = r.text.slice(0, 800);
     return {
       success: true,
-      data: { response: r.text },
+      data: { response: r.text, sessionId: r.sessionId },
       speechSummary: speech,
       displayCard: {
         type: "hermes_response",
-        title: "Hermes Response",
-        data: { text: r.text },
+        title: `Hermes ⟶ ${task.slice(0, 50)}`,
+        data: { text: r.text, prompt: task, sessionId: r.sessionId },
       },
     };
   },
 };
 
 // ─────────────────────────────────────────────────────────────
-// Obsidian Direct Skills (fast path — bypass Hermes round-trip)
-// ─────────────────────────────────────────────────────────────
+// Obsidian / Memory Vault Direct Skills (fast path — backed by friday-memory)
+// ─────────────────────────────────────────────────────────────────────────────
+import {
+  ensureMemoryVault,
+  searchMemoryVault,
+  readMemoryNote,
+  logDialogueTurn,
+  logExecutionTrace,
+} from "./memoryLogger.js";
+
 function sanitizeFileName(name: string): string {
   return name.replace(/[\\/:*?\"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "Untitled";
-}
-function ensureVault(): string {
-  const vault = getVaultPath();
-  if (!fs.existsSync(vault)) fs.mkdirSync(vault, { recursive: true });
-  return vault;
 }
 
 export const obsidianSearchSkill: ModularSkill = {
   name: "obsidian_search",
-  displayName: "Obsidian Search",
-  description: "Search your Obsidian vault notes by keyword. Fast direct filesystem search.",
+  displayName: "Memory & Vault Search",
+  description: "Search your Friday memory vault notes, facts, and research by keyword.",
   icon: "Search",
   category: "Productivity",
   declaration: {
     name: "obsidian_search",
-    description: "Search Obsidian vault notes by keyword. Use when user says 'search my notes', 'find in vault', 'look up my notes'.",
+    description: "Search Friday memory vault notes and facts by keyword. Use when user says 'search my notes', 'find in memory', 'look up vault', 'search facts'.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        query: { type: Type.STRING, description: "Search keyword or regex, e.g. 'meeting', 'project alpha'" },
+        query: { type: Type.STRING, description: "Search keyword or topic, e.g. 'operator', 'preferences', 'specs', 'project'" },
         limit: { type: Type.NUMBER, description: "Max results (default 5, max 10)" },
       },
       required: ["query"],
@@ -698,42 +701,27 @@ export const obsidianSearchSkill: ModularSkill = {
   },
   execute: async (args: { query: string; limit?: number }) => {
     try {
-      const vault = ensureVault();
       const q = (args.query || "").trim();
       if (!q) return { success: false, data: {}, speechSummary: "No search query provided." };
       const limit = Math.min(Math.max(args.limit || 5, 1), 10);
-      const files = fs.readdirSync(vault).filter((f) => f.endsWith(".md"));
-      const results: Array<{ file: string; snippet: string }> = [];
-      const lowerQ = q.toLowerCase();
-      for (const file of files) {
-        try {
-          const content = fs.readFileSync(path.join(vault, file), "utf-8");
-          if (content.toLowerCase().includes(lowerQ)) {
-            const idx = content.toLowerCase().indexOf(lowerQ);
-            const snippet = content
-              .slice(Math.max(0, idx - 80), idx + 120)
-              .replace(/\s+/g, " ")
-              .trim()
-              .slice(0, 200);
-            results.push({ file, snippet });
-            if (results.length >= limit) break;
-          }
-        } catch {}
-      }
+      const results = searchMemoryVault(q, limit);
+
       if (results.length === 0) {
         return {
           success: true,
           data: { query: q, results: [] },
-          speechSummary: `No notes found matching "${q}" in your vault.`,
+          speechSummary: `No memory notes found matching "${q}" in Friday's memory vault.`,
           displayCard: { type: "obsidian_search", title: `Search: "${q}"`, data: { query: q, results: [] } },
         };
       }
-      const speech = `Found ${results.length} note${results.length === 1 ? "" : "s"} matching "${q}": ${results.map((r) => r.file.replace(".md", "")).join(", ")}.`;
+
+      const formattedResults = results.map((r) => ({ file: r.file, snippet: r.snippet }));
+      const speech = `Found ${results.length} note${results.length === 1 ? "" : "s"} matching "${q}": ${results.map((r) => path.basename(r.file, ".md")).join(", ")}.`;
       return {
         success: true,
-        data: { query: q, results },
+        data: { query: q, results: formattedResults },
         speechSummary: speech,
-        displayCard: { type: "obsidian_search", title: `Search: "${q}"`, data: { query: q, results } },
+        displayCard: { type: "obsidian_search", title: `Search: "${q}"`, data: { query: q, results: formattedResults } },
       };
     } catch (err: any) {
       return { success: false, data: { error: err.message }, speechSummary: `Search failed: ${err.message}` };
@@ -743,38 +731,37 @@ export const obsidianSearchSkill: ModularSkill = {
 
 export const obsidianReadSkill: ModularSkill = {
   name: "obsidian_read",
-  displayName: "Obsidian Read Note",
-  description: "Read a specific Obsidian note by filename.",
+  displayName: "Memory & Note Read",
+  description: "Read a specific note or fact file from Friday's memory vault.",
   icon: "FileText",
   category: "Productivity",
   declaration: {
     name: "obsidian_read",
-    description: "Read an Obsidian note by filename. Use when user says 'read my note', 'open note'. Provide filename with or without .md.",
+    description: "Read a note or fact file by name from Friday's memory vault. Use when user says 'read my note', 'open note', 'check memory fact'.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        path: { type: Type.STRING, description: "Note filename, e.g. 'Meeting 2026-08-29' or 'Meeting 2026-08-29.md' or 'folder/note'" },
+        path: { type: Type.STRING, description: "Note name or path, e.g. 'USER', 'facts/user_profile', 'system_specs', 'MEMORY'" },
       },
       required: ["path"],
     },
   },
   execute: async (args: { path: string }) => {
     try {
-      const vault = ensureVault();
-      let rel = (args.path || "").trim();
-      if (!rel) return { success: false, data: {}, speechSummary: "No note path provided." };
-      if (!rel.endsWith(".md")) rel += ".md";
-      const full = path.join(vault, rel);
-      if (!fs.existsSync(full)) {
-        return { success: false, data: { path: rel }, speechSummary: `Note "${rel}" not found in your vault.` };
+      const p = (args.path || "").trim();
+      if (!p) return { success: false, data: {}, speechSummary: "No note path provided." };
+      const { found, path: relPath, content } = readMemoryNote(p);
+
+      if (!found) {
+        return { success: false, data: { path: p }, speechSummary: `Note "${p}" was not found in Friday's memory vault.` };
       }
-      const content = fs.readFileSync(full, "utf-8");
+
       const preview = content.slice(0, 800);
       return {
         success: true,
-        data: { path: rel, content },
-        speechSummary: `Note "${rel.replace(".md", "")}": ${preview.slice(0, 300).replace(/\n/g, " ")}`,
-        displayCard: { type: "obsidian_note", title: rel.replace(".md", ""), data: { path: rel, content: content.slice(0, 4000) } },
+        data: { path: relPath, content },
+        speechSummary: `Note "${path.basename(relPath, ".md")}": ${preview.slice(0, 300).replace(/\n/g, " ")}`,
+        displayCard: { type: "obsidian_note", title: path.basename(relPath, ".md"), data: { path: relPath, content: content.slice(0, 4000) } },
       };
     } catch (err: any) {
       return { success: false, data: { error: err.message }, speechSummary: `Could not read note: ${err.message}` };
@@ -784,26 +771,26 @@ export const obsidianReadSkill: ModularSkill = {
 
 export const obsidianCreateSkill: ModularSkill = {
   name: "obsidian_create",
-  displayName: "Obsidian Create Note",
-  description: "Create a new Obsidian note with title and content.",
+  displayName: "Memory Note Create",
+  description: "Create a new note or save information into Friday's memory vault.",
   icon: "FilePlus",
   category: "Productivity",
   declaration: {
     name: "obsidian_create",
-    description: "Create a new Obsidian note. Use when user says 'create a note', 'make a note', 'save to Obsidian'.",
+    description: "Create a new note in Friday's memory vault. Use when user says 'create a note', 'save to memory', 'make a note', 'remember note'.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        title: { type: Type.STRING, description: "Note title, e.g. 'Meeting 2026-08-29'" },
+        title: { type: Type.STRING, description: "Note title, e.g. 'Project Alpha', 'Meeting 2026-08-29'" },
         content: { type: Type.STRING, description: "Markdown content for the note" },
-        folder: { type: Type.STRING, description: "Optional subfolder inside vault, e.g. 'Daily'" },
+        folder: { type: Type.STRING, description: "Optional subfolder inside vault, e.g. 'facts', 'knowledge', 'Research'" },
       },
       required: ["title", "content"],
     },
   },
   execute: async (args: { title: string; content: string; folder?: string }) => {
     try {
-      const vault = ensureVault();
+      const vault = ensureMemoryVault();
       const title = sanitizeFileName(args.title || "Untitled");
       const content = args.content || "";
       const folder = (args.folder || "").trim().replace(/^[\\/]+/, "");
@@ -815,7 +802,7 @@ export const obsidianCreateSkill: ModularSkill = {
       return {
         success: true,
         data: { path: rel },
-        speechSummary: `Created note "${title}" in your vault.`,
+        speechSummary: `Created note "${title}" in Friday's memory vault.`,
         displayCard: { type: "obsidian_note", title: `Created: ${title}`, data: { path: rel, content: content.slice(0, 2000) } },
       };
     } catch (err: any) {
@@ -826,17 +813,17 @@ export const obsidianCreateSkill: ModularSkill = {
 
 export const obsidianAppendSkill: ModularSkill = {
   name: "obsidian_append",
-  displayName: "Obsidian Append to Note",
-  description: "Append content to an existing Obsidian note, or create it if missing.",
+  displayName: "Memory Note Append",
+  description: "Append content to an existing note in Friday's memory vault.",
   icon: "FilePlus2",
   category: "Productivity",
   declaration: {
     name: "obsidian_append",
-    description: "Append content to an Obsidian note. Creates the note if it does not exist. Use for daily logs, 'add to my note', 'append'.",
+    description: "Append content to a note in Friday's memory vault. Creates the note if it does not exist. Use for 'add to my note', 'append to memory', 'log note'.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        path: { type: Type.STRING, description: "Note filename, e.g. 'Daily Log' or 'Daily/2026-08-29'" },
+        path: { type: Type.STRING, description: "Note name or path, e.g. 'USER', 'facts/user_profile', 'conversations/2026-08-29'" },
         content: { type: Type.STRING, description: "Markdown content to append" },
       },
       required: ["path", "content"],
@@ -844,8 +831,8 @@ export const obsidianAppendSkill: ModularSkill = {
   },
   execute: async (args: { path: string; content: string }) => {
     try {
-      const vault = ensureVault();
-      let rel = (args.path || "Daily Log").trim();
+      const vault = ensureMemoryVault();
+      let rel = (args.path || "Daily Note").trim().replace(/^[\\/]+/, "");
       if (!rel.endsWith(".md")) rel += ".md";
       const full = path.join(vault, rel);
       const dir = path.dirname(full);
@@ -855,8 +842,8 @@ export const obsidianAppendSkill: ModularSkill = {
       return {
         success: true,
         data: { path: rel },
-        speechSummary: `Appended to note "${rel.replace(".md", "")}".`,
-        displayCard: { type: "obsidian_note", title: `Updated: ${rel.replace(".md", "")}`, data: { path: rel } },
+        speechSummary: `Appended to note "${path.basename(rel, ".md")}".`,
+        displayCard: { type: "obsidian_note", title: `Updated: ${path.basename(rel, ".md")}`, data: { path: rel } },
       };
     } catch (err: any) {
       return { success: false, data: { error: err.message }, speechSummary: `Failed to append: ${err.message}` };
