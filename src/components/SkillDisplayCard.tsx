@@ -11,6 +11,11 @@ import {
   Droplets,
   Calendar,
   X,
+  Bot,
+  Search,
+  FileText,
+  FilePlus,
+  Sparkles,
 } from 'lucide-react';
 
 interface SkillDisplayCardProps {
@@ -278,6 +283,110 @@ export const SkillDisplayCard: React.FC<SkillDisplayCardProps> = ({
           )}
         </div>
         <div className="my-2 text-sm font-mono text-emerald-300 font-semibold">{result}</div>
+      </div>
+    );
+  }
+
+  // 5. Hermes Personal Assistant — FULL capabilities gateway
+  if (type === 'hermes_response') {
+    const { text } = data || {};
+    return (
+      <div className="w-full max-w-xl mx-auto my-3 rounded-2xl bg-gradient-to-br from-slate-900/95 via-violet-950/40 to-slate-900/95 border border-violet-500/30 p-4 text-slate-100 shadow-xl backdrop-blur-md animate-fadeIn">
+        <div className="flex items-center justify-between pb-2.5 border-b border-violet-500/20">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-violet-500/20 text-violet-400">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-mono font-semibold uppercase tracking-wider text-violet-300">
+                Hermes • Full Access Gateway
+              </span>
+              <h3 className="text-xs text-slate-300 truncate max-w-xs">{title}</h3>
+            </div>
+          </div>
+          {onDismiss && (
+            <button onClick={onDismiss} className="p-1 rounded text-slate-400 hover:text-white transition-colors" title="Dismiss">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="my-2.5 text-xs leading-relaxed whitespace-pre-wrap text-slate-200 max-h-72 overflow-y-auto pr-1">
+          {text || 'No response'}
+        </div>
+        <div className="flex items-center gap-1.5 mt-2 text-[10px] font-mono text-violet-300/70">
+          <Sparkles className="w-3 h-3" />
+          <span>Routed via Hermes • memory, vault, tools, system — full capabilities</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 6. Obsidian Note Card
+  if (type === 'obsidian_note') {
+    const { path: notePath, content } = data || {};
+    return (
+      <div className="w-full max-w-xl mx-auto my-3 rounded-2xl bg-gradient-to-br from-slate-900/95 via-amber-950/30 to-slate-900/95 border border-amber-500/30 p-4 text-slate-100 shadow-xl backdrop-blur-md animate-fadeIn">
+        <div className="flex items-center justify-between pb-2.5 border-b border-amber-500/20">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-mono font-semibold uppercase tracking-wider text-amber-300">Obsidian Vault</span>
+              <h3 className="text-xs text-slate-300">{title}</h3>
+              {notePath && <p className="text-[10px] font-mono text-slate-500">{notePath}</p>}
+            </div>
+          </div>
+          {onDismiss && (
+            <button onClick={onDismiss} className="p-1 rounded text-slate-400 hover:text-white transition-colors" title="Dismiss">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        {content && (
+          <div className="my-2.5 p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/30 text-xs whitespace-pre-wrap max-h-56 overflow-y-auto">
+            {content.slice(0, 3000)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 7. Obsidian Search Results
+  if (type === 'obsidian_search') {
+    const { query, results = [] } = data || {};
+    return (
+      <div className="w-full max-w-xl mx-auto my-3 rounded-2xl bg-gradient-to-br from-slate-900/95 via-slate-800/50 to-slate-900/95 border border-slate-600/30 p-4 text-slate-100 shadow-xl backdrop-blur-md animate-fadeIn">
+        <div className="flex items-center justify-between pb-2.5 border-b border-slate-600/20">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-slate-700/60 text-slate-300">
+              <Search className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-300">Vault Search</span>
+              <h3 className="text-xs text-slate-400">“{query}” • {results.length} result{results.length === 1 ? '' : 's'}</h3>
+            </div>
+          </div>
+          {onDismiss && (
+            <button onClick={onDismiss} className="p-1 rounded text-slate-400 hover:text-white transition-colors" title="Dismiss">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="space-y-2 my-2.5 max-h-64 overflow-y-auto">
+          {results.length === 0 ? (
+            <p className="text-xs text-slate-400 text-center py-3">No notes matched “{query}”.</p>
+          ) : (
+            results.map((r: any, i: number) => (
+              <div key={i} className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/30 hover:bg-slate-800/60 transition-colors">
+                <div className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                  <FilePlus className="w-3 h-3" /> {r.file}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 line-clamp-2">{r.snippet}</div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     );
   }

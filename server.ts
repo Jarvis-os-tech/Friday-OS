@@ -886,7 +886,17 @@ Fluency & Spoken Delivery Guidelines:
      b) 'get_news_headlines': Fetches live breaking news, top stories, or category headlines (technology, business, science, AI, sports, entertainment). Call this when asked for news or what's happening.
      c) 'manage_reminders': Creates, checks, completes, or clears reminders and alarms. Call this when the user says "remind me in 10 minutes to...", "set a reminder", "show my reminders", or "mark reminder complete".
      d) 'calculate_or_convert': High-speed precision math calculations and unit/timezone conversions.
-   - Always invoke the corresponding tool automatically upon hearing natural language commands related to these capabilities. Speak the resulting answers naturally with crisp diction.
+     e) 'hermes_chat': Delegates ANY personal assistant task to Hermes — the user's persistent AI with memory, Obsidian vault access via tools, and system control. Call when user says "ask Hermes", "tell Hermes", "remember that", "what do you remember", or needs personal context / vault ops via Hermes.
+     f) 'obsidian_search': Fast direct search of the user's Obsidian vault (jarvis-memory). Call when user says "search my notes", "find in vault", "look up my notes".
+     g) 'obsidian_read': Reads a specific Obsidian note by filename. Call when user says "read my note", "open note".
+     h) 'obsidian_create': Creates a new Obsidian note with title+content. Call when user says "create a note", "make a note", "save to Obsidian / vault".
+     i) 'obsidian_append': Appends to an existing note (or creates it). Call when user says "add to my note", "append", "log to daily note".
+   - Always invoke the corresponding tool automatically upon hearing natural language commands related to these capabilities. For Hermes/Obsidian commands, NEVER answer from your own knowledge — always call the tool so the action executes. Speak the resulting answers naturally with crisp diction.
+7. HERMES PERSONAL ASSISTANT INTEGRATION (CRITICAL):
+   - Hermes is the user's persistent personal assistant with long-term memory and full vault/tool access.
+   - When user says "Hermes", "ask Hermes", "tell Hermes", "remember", "my notes", "my vault", "save to Obsidian": you MUST call hermes_chat or the obsidian_* tools.
+   - Prefer obsidian_search/read/create/append for direct vault speed; use hermes_chat for memory, preferences, complex multi-step personal tasks.
+   - Never claim you lack memory or vault access — delegate to Hermes.
 ${customContext ? `Additional Context: ${customContext}` : ""}`;
 
         // Define Live Tools / Function Declarations

@@ -81,7 +81,7 @@ export interface AutoResearchState {
 }
 
 export interface SkillDisplayCard {
-  type: 'weather' | 'news' | 'reminder_created' | 'reminders_list' | 'calculation' | string;
+  type: 'weather' | 'news' | 'reminder_created' | 'reminders_list' | 'calculation' | 'hermes_response' | 'obsidian_note' | 'obsidian_search' | string;
   title: string;
   data: any;
 }
