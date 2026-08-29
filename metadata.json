@@ -1,0 +1,6 @@
+{
+  "name": "FRIDAY AI Voice Assistant",
+  "description": "Minimalist, seamless plain voice interface powered by real-time speech-to-speech AI, autonomous research grounding, and multi-input intelligence.",
+  "requestFramePermissions": ["microphone", "camera", "display-capture"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,292 @@
+@import "tailwindcss";
+
+@layer utilities {
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% {
+      opacity: 0.8;
+      filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.6));
+    }
+    50% {
+      opacity: 1;
+      filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.9));
+    }
+  }
+
+  .animate-fadeIn {
+    animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-pulseGlow {
+    animation: pulseGlow 2.5s ease-in-out infinite;
+  }
+
+  /* Skeuomorphic Tactile Shadows & Materials */
+  .skeuo-panel {
+    background: linear-gradient(180deg, #1e2430 0%, #121720 50%, #0a0d14 100%);
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.12),
+      inset 0 -1px 2px 0 rgba(0, 0, 0, 0.6),
+      0 12px 30px -5px rgba(0, 0, 0, 0.8),
+      0 4px 10px rgba(0, 0, 0, 0.5);
+    border: 1px solid #2a3444;
+  }
+
+  .skeuo-well {
+    background: linear-gradient(180deg, #090c12 0%, #0e121a 100%);
+    box-shadow: 
+      inset 0 3px 6px rgba(0, 0, 0, 0.8),
+      inset 0 1px 2px rgba(0, 0, 0, 0.9),
+      0 1px 0 rgba(255, 255, 255, 0.05);
+    border: 1px solid #1c2433;
+  }
+
+  .skeuo-btn {
+    background: linear-gradient(180deg, #2b3547 0%, #1e2634 50%, #151b25 100%);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.2),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.5),
+      0 3px 6px rgba(0, 0, 0, 0.5),
+      0 1px 2px rgba(0, 0, 0, 0.4);
+    border: 1px solid #3d4a60;
+    transition: all 0.12s ease-out;
+  }
+
+  .skeuo-btn:hover {
+    background: linear-gradient(180deg, #354258 0%, #253042 50%, #1a2230 100%);
+    border-color: #4e5f7a;
+  }
+
+  .skeuo-btn:active {
+    background: linear-gradient(180deg, #131822 0%, #18202d 100%);
+    box-shadow: 
+      inset 0 2px 4px rgba(0, 0, 0, 0.8),
+      0 1px 0 rgba(255, 255, 255, 0.05);
+    transform: translateY(1px);
+  }
+
+  .skeuo-btn-primary {
+    background: linear-gradient(180deg, #0284c7 0%, #0369a1 50%, #075985 100%);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.35),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.4),
+      0 4px 12px rgba(2, 132, 199, 0.35),
+      0 2px 4px rgba(0, 0, 0, 0.5);
+    border: 1px solid #38bdf8;
+  }
+
+  .skeuo-btn-primary:hover {
+    background: linear-gradient(180deg, #38bdf8 0%, #0284c7 50%, #0369a1 100%);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.45),
+      0 6px 16px rgba(2, 132, 199, 0.5);
+  }
+
+  .skeuo-btn-primary:active {
+    background: linear-gradient(180deg, #075985 0%, #0369a1 100%);
+    box-shadow: 
+      inset 0 3px 5px rgba(0, 0, 0, 0.6),
+      0 1px 0 rgba(255, 255, 255, 0.1);
+    transform: translateY(1px);
+  }
+
+  .skeuo-btn-danger {
+    background: linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.35),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.4),
+      0 4px 12px rgba(220, 38, 38, 0.35),
+      0 2px 4px rgba(0, 0, 0, 0.5);
+    border: 1px solid #f87171;
+  }
+
+  .skeuo-btn-danger:hover {
+    background: linear-gradient(180deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.45),
+      0 6px 16px rgba(220, 38, 38, 0.5);
+  }
+
+  .skeuo-btn-danger:active {
+    background: linear-gradient(180deg, #7f1d1d 0%, #991b1b 100%);
+    box-shadow: 
+      inset 0 3px 5px rgba(0, 0, 0, 0.6),
+      0 1px 0 rgba(255, 255, 255, 0.1);
+    transform: translateY(1px);
+  }
+
+  /* LED jewel indicator */
+  .led-jewel-cyan {
+    background: radial-gradient(circle at 35% 35%, #a5f3fc 0%, #06b6d4 50%, #0891b2 85%, #164e63 100%);
+    box-shadow: 
+      0 0 8px 1px rgba(6, 182, 212, 0.8),
+      inset 0 1px 1px rgba(255, 255, 255, 0.8),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.5);
+  }
+
+  .led-jewel-green {
+    background: radial-gradient(circle at 35% 35%, #86efac 0%, #22c55e 50%, #16a34a 85%, #14532d 100%);
+    box-shadow: 
+      0 0 8px 1px rgba(34, 197, 94, 0.8),
+      inset 0 1px 1px rgba(255, 255, 255, 0.8),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.5);
+  }
+
+  .led-jewel-amber {
+    background: radial-gradient(circle at 35% 35%, #fef08a 0%, #eab308 50%, #ca8a04 85%, #713f12 100%);
+    box-shadow: 
+      0 0 8px 1px rgba(234, 179, 8, 0.8),
+      inset 0 1px 1px rgba(255, 255, 255, 0.8),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.5);
+  }
+
+  .led-jewel-off {
+    background: radial-gradient(circle at 35% 35%, #64748b 0%, #334155 60%, #1e293b 100%);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.2),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(10, 13, 20, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(45, 55, 72, 0.8);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(66, 82, 107, 0.95);
+}
+
+/* Friday Cyber Aesthetics & Neural Orb Keyframes */
+@keyframes ringPulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+@keyframes orbGlow {
+  0% {
+    transform: scale(0.96);
+    filter: brightness(1);
+  }
+  100% {
+    transform: scale(1.04);
+    filter: brightness(1.2) drop-shadow(0 0 35px rgba(56, 189, 248, 0.65));
+  }
+}
+
+@keyframes waveOscillate {
+  0% {
+    transform: scaleY(0.35);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scaleY(1.35);
+    opacity: 1;
+  }
+}
+
+@keyframes loaderSlide {
+  0% {
+    left: -40%;
+    width: 30%;
+  }
+  50% {
+    width: 50%;
+  }
+  100% {
+    left: 100%;
+    width: 30%;
+  }
+}
+
+.friday-radial-bg {
+  background: radial-gradient(circle at 50% 35%, #101426 0%, #06070c 75%, #030407 100%);
+}
+
+.friday-title-gradient {
+  background: linear-gradient(135deg, #ffffff 20%, #38bdf8 60%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 6px;
+}
+
+.pulse-ring-cyan {
+  border: 2px solid rgba(6, 182, 212, 0.45);
+  animation: ringPulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.pulse-ring-purple {
+  border: 2px solid rgba(168, 85, 247, 0.4);
+  animation: ringPulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite 1.2s;
+}
+
+.pulse-ring-emerald {
+  border: 2px solid rgba(34, 197, 94, 0.5);
+  animation: ringPulse 2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.pulse-ring-amber {
+  border: 2px solid rgba(245, 158, 11, 0.5);
+  animation: ringPulse 2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.pulse-ring-rose {
+  border: 2px solid rgba(244, 63, 94, 0.5);
+  animation: ringPulse 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.friday-orb-base {
+  background: radial-gradient(circle at 35% 35%, #38bdf8, #818cf8 45%, #6366f1 75%, #090d16 100%);
+  box-shadow: 0 0 45px rgba(56, 189, 248, 0.5), 0 0 90px rgba(129, 140, 248, 0.3);
+  animation: orbGlow 3s ease-in-out infinite alternate;
+}
+
+.friday-orb-listening {
+  background: radial-gradient(circle at 35% 35%, #86efac, #22c55e 45%, #15803d 75%, #022c22 100%);
+  box-shadow: 0 0 45px rgba(34, 197, 94, 0.55), 0 0 90px rgba(74, 222, 128, 0.3);
+  animation: orbGlow 2s ease-in-out infinite alternate;
+}
+
+.friday-orb-speaking {
+  background: radial-gradient(circle at 35% 35%, #e0e7ff, #38bdf8 35%, #818cf8 65%, #4f46e5 85%, #0f172a 100%);
+  box-shadow: 0 0 55px rgba(56, 189, 248, 0.65), 0 0 110px rgba(168, 85, 247, 0.45);
+  animation: orbGlow 1.5s ease-in-out infinite alternate;
+}
+
+.friday-orb-thinking {
+  background: radial-gradient(circle at 35% 35%, #fef08a, #eab308 45%, #ca8a04 75%, #422006 100%);
+  box-shadow: 0 0 45px rgba(234, 179, 8, 0.55), 0 0 90px rgba(245, 158, 11, 0.3);
+  animation: orbGlow 1.8s ease-in-out infinite alternate;
+}
+
+.friday-wave-bar {
+  animation: waveOscillate 1.2s ease-in-out infinite alternate;
+}
+
