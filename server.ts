@@ -5,7 +5,7 @@ import fs from "fs";
 import { exec } from "child_process";
 import dotenv from "dotenv";
 import { WebSocketServer, WebSocket } from "ws";
-import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
+import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration, StartSensitivity, EndSensitivity } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import {
   MODULAR_SKILLS,
@@ -24,6 +24,44 @@ import {
   readMemoryNote,
   getAllVaultMarkdownFiles,
 } from "./server/memoryLogger.js";
+import {
+  getSystemTelemetryGroundTruth,
+  getBatteryStatus,
+  getSystemVolume,
+  setSystemVolume,
+  diagnoseSoundServer,
+  healSoundServer,
+  getScreenBrightness,
+  setScreenBrightness,
+  getThermalSensors,
+  getDetailedStorageUsage,
+  launchApplication,
+  listInstalledApplications,
+  getRunningProcesses,
+  manageProcess,
+  getPowerProfile,
+  setPowerProfile,
+  getNetworkStatusGroundTruth,
+  controlMediaPlayback,
+  systemPowerAction,
+  sendDesktopNotification,
+  executeSystemCommand,
+  searchLocalFiles,
+  readLocalFile,
+  writeLocalFile,
+  takeScreenshot,
+  getPcSpecGroundTruth,
+  getFirewallStatus,
+  desktopControlAction,
+  manageSystemdService,
+  getSystemLogs,
+  managePackages,
+  getNetworkConnections,
+  listDirectory,
+  deleteLocalFile,
+  clipboardControl,
+  getEnvironmentInfo,
+} from "./server/system_controller";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -519,6 +557,82 @@ app.get("/api/obsidian/note", async (req, res) => {
   res.json(result);
 });
 
+// Friday-OS Federated Memory REST endpoints (department-scoped)
+import { writeMemoryEntry, readMemoryEntry, searchMemory, listDepartments, assertWriteAllowed, DEPARTMENTS } from "./server/memoryGuard.js";
+
+app.get("/api/memory/departments", (req, res) => {
+  try {
+    res.json({ success: true, departments: listDepartments() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/memory/department/:dept", async (req, res) => {
+  try {
+    const dept = req.params.dept;
+    if (!DEPARTMENTS.includes(dept)) {
+      return res.status(404).json({ error: `Unknown department: ${dept}` });
+    }
+    const { writeMemoryEntry, readMemoryEntry, searchMemory, listDepartments, assertWriteAllowed, DEPARTMENTS, loadIndex } = await import("./server/memoryGuard.js");
+    const index = loadIndex(dept);
+    res.json({ success: true, department: dept, count: index.entries.length, entries: index.entries });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/memory/department/:dept/entry/:id", (req, res) => {
+  try {
+    const dept = req.params.dept;
+    const id = req.params.id;
+    if (!DEPARTMENTS.includes(dept)) {
+      return res.status(404).json({ error: `Unknown department: ${dept}` });
+    }
+    const entry = readMemoryEntry(dept, id);
+    if (!entry) {
+      return res.status(404).json({ error: "Entry not found" });
+    }
+    res.json({ success: true, entry });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/memory/department/:dept/write", async (req, res) => {
+  try {
+    const dept = req.params.dept;
+    if (!DEPARTMENTS.includes(dept)) {
+      return res.status(404).json({ error: `Unknown department: ${dept}` });
+    }
+    const { type, title, tags } = req.body;
+    if (!type || !title) {
+      return res.status(400).json({ error: "type and title required" });
+    }
+    // Caller is "friday" (this server acts as Friday gateway)
+    const entry = writeMemoryEntry(dept, "friday", { type, title, tags: tags || [] });
+    res.json({ success: true, entry });
+  } catch (err: any) {
+    if (err.message.includes("Write denied")) {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/memory/search", (req, res) => {
+  try {
+    const q = (req.query.q as string) || "";
+    const dept = (req.query.dept as string) || undefined;
+    const type = (req.query.type as string) || undefined;
+    const tags = req.query.tags ? (Array.isArray(req.query.tags) ? req.query.tags : [req.query.tags]) : undefined;
+    const results = searchMemory({ text: q, type, tags }, dept);
+    res.json({ success: true, query: q, department: dept, results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Reminders REST endpoints
 app.get("/api/reminders", (req, res) => {
@@ -576,6 +690,288 @@ app.post("/api/tasks/run", async (req, res) => {
 app.post("/api/tasks/:id/cancel", (req, res) => {
   const success = parallelTaskManager.cancelTask(req.params.id);
   res.json({ success });
+});
+
+// ─── System Control API Routes (Phase 1 — C++ Native Workers) ───────────────
+
+app.get("/api/system/telemetry", async (req, res) => {
+  try {
+    const data = await getSystemTelemetryGroundTruth();
+    res.json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/hardware", async (req, res) => {
+  try {
+    const [volume, brightness, battery, thermals] = await Promise.all([
+      getSystemVolume(), getScreenBrightness(), getBatteryStatus(), getThermalSensors()
+    ]);
+    res.json({ volume, brightness, battery, thermals });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/volume", async (req, res) => {
+  try {
+    const { level } = req.body;
+    const result = await setSystemVolume(level);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/brightness", async (req, res) => {
+  try {
+    const { level } = req.body;
+    const result = await setScreenBrightness(level);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/sound-health", async (req, res) => {
+  try {
+    const status = await diagnoseSoundServer();
+    res.json(status);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/sound-heal", async (req, res) => {
+  try {
+    const result = await healSoundServer();
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/spec", async (req, res) => {
+  try {
+    const spec = await getPcSpecGroundTruth();
+    res.json(spec);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/apps", async (req, res) => {
+  try {
+    const apps = await listInstalledApplications();
+    res.json(apps);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/launch", async (req, res) => {
+  try {
+    const { appName } = req.body;
+    const result = await launchApplication(appName);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/processes", async (req, res) => {
+  try {
+    const { sortBy, limit } = req.query as any;
+    const procs = await getRunningProcesses({ sortBy: sortBy || 'cpu', limit: limit ? Number(limit) : 50 });
+    res.json(procs);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/processes/manage", async (req, res) => {
+  try {
+    const { action, target, pid, processName, signal } = req.body;
+    const effectivePid = pid || (typeof target === 'number' ? target : undefined);
+    const effectiveName = processName || (typeof target === 'string' ? target : undefined);
+    const signalMap: Record<string, "SIGTERM" | "SIGKILL" | "SIGSTOP" | "SIGCONT"> = {
+      kill: "SIGKILL",
+      terminate: "SIGTERM",
+      suspend: "SIGSTOP",
+      resume: "SIGCONT"
+    };
+    const effectiveSignal = signal || signalMap[action || 'kill'] || "SIGTERM";
+    const result = await manageProcess({ pid: effectivePid, processName: effectiveName, signal: effectiveSignal });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/power-profile", async (req, res) => {
+  try {
+    const profile = await getPowerProfile();
+    res.json(profile);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/power-profile", async (req, res) => {
+  try {
+    const { profile } = req.body;
+    const result = await setPowerProfile(profile);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/power-action", async (req, res) => {
+  try {
+    const { action } = req.body;
+    const result = await systemPowerAction(action);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/storage", async (req, res) => {
+  try {
+    const storage = await getDetailedStorageUsage();
+    res.json(storage);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/thermals", async (req, res) => {
+  try {
+    const thermals = await getThermalSensors();
+    res.json(thermals);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/connections", async (req, res) => {
+  try {
+    const net = await getNetworkConnections();
+    res.json(net);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/network", async (req, res) => {
+  try {
+    const net = await getNetworkStatusGroundTruth();
+    res.json(net);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/firewall", async (req, res) => {
+  try {
+    const fw = await getFirewallStatus();
+    res.json(fw);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/logs", async (req, res) => {
+  try {
+    const { unit, lines, priority } = req.query as any;
+    const logs = await getSystemLogs({ unit: unit || "", lines: lines ? Number(lines) : 50, priority: priority || "" });
+    res.json(logs);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/services", async (req, res) => {
+  try {
+    const { action, serviceName, unit } = req.query as any;
+    const result = await manageSystemdService({ action: action || "status", unit: serviceName || unit || "" });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/exec", async (req, res) => {
+  try {
+    const { command, timeout } = req.body;
+    const result = await executeSystemCommand({ command, timeoutMs: timeout });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/control", async (req, res) => {
+  try {
+    const { action, target } = req.body;
+    const result = await desktopControlAction({ action, target });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/screenshot", async (req, res) => {
+  try {
+    const { target } = req.body;
+    const result = await takeScreenshot(target || "fullscreen");
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/notify", async (req, res) => {
+  try {
+    const { title, body, message, urgency } = req.body;
+    const result = await sendDesktopNotification({ title: title || "Friday", message: body || message || "", urgency: urgency || "normal" });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/media", async (req, res) => {
+  try {
+    const { action } = req.body;
+    const result = await controlMediaPlayback(action);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/clipboard", async (req, res) => {
+  try {
+    const { action, content, text } = req.body;
+    const result = await clipboardControl({ action: action || 'read', text: content || text });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/files/search", async (req, res) => {
+  try {
+    const { query, pattern, directory, maxResults } = req.body;
+    const result = await searchLocalFiles({ pattern: pattern || query || "", rootDir: directory, maxResults: maxResults ? Number(maxResults) : 20 });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/files/read", async (req, res) => {
+  try {
+    const { filePath } = req.body;
+    const result = await readLocalFile(filePath);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/files/write", async (req, res) => {
+  try {
+    const { filePath, content } = req.body;
+    const result = await writeLocalFile({ filePath, content: content || "" });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/files/delete", async (req, res) => {
+  try {
+    const { filePath } = req.body;
+    const result = await deleteLocalFile(filePath);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/files/list", async (req, res) => {
+  try {
+    const { directory } = req.query as any;
+    const result = await listDirectory(directory || process.cwd());
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/system/packages", async (req, res) => {
+  try {
+    const { action, packageName } = req.body;
+    const result = await managePackages({ action: action || 'check', packageName: packageName || '' });
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/system/env", async (req, res) => {
+  try {
+    const info = await getEnvironmentInfo();
+    res.json(info);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Modular skill tool execution endpoint
+app.post("/api/tools/execute", async (req, res) => {
+  try {
+    const { toolName, skillName, args } = req.body;
+    const target = skillName || toolName;
+    const result = await executeSkillByName(target, args || {});
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // Parse link endpoint: fetches title, description, and readable body text for URL attachments
@@ -1068,6 +1464,20 @@ ${customContext ? `Additional Context: ${customContext}` : ""}`;
                   prebuiltVoiceConfig: { voiceName },
                 },
               },
+              // Best-practice Live config: native VAD tuned, transcriptions, resumption, compression
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  disabled: false,
+                  startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+                  endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+                  prefixPaddingMs: 80,
+                  silenceDurationMs: 350,
+                },
+              },
+              inputAudioTranscription: {},
+              outputAudioTranscription: {},
+              sessionResumption: {},
+              contextWindowCompression: { slidingWindow: {} },
               tools: [
                 {
                   functionDeclarations: allTools,
@@ -1248,6 +1658,26 @@ ${customContext ? `Additional Context: ${customContext}` : ""}`;
                       timestamp: Date.now(),
                     })
                   );
+                }
+
+                // Handle transcriptions (when input/output transcription enabled)
+                // @ts-ignore — transcription fields vary by SDK version
+                const sContent: any = serverMsg.serverContent;
+                if (sContent?.inputTranscription?.text) {
+                  clientWs.send(JSON.stringify({ type: "input_transcription", text: sContent.inputTranscription.text, timestamp: Date.now() }));
+                  try { logDialogueTurn("User", sContent.inputTranscription.text); } catch {}
+                }
+                if (sContent?.outputTranscription?.text) {
+                  clientWs.send(JSON.stringify({ type: "output_transcription", text: sContent.outputTranscription.text, timestamp: Date.now() }));
+                }
+                // Session resumption handle — log for resume within 2h window
+                // @ts-ignore
+                if ((serverMsg as any).sessionResumptionUpdate) {
+                  const upd: any = (serverMsg as any).sessionResumptionUpdate;
+                  console.log("[Live] SessionResumptionUpdate handle:", upd?.newHandle || upd?.handle || "unknown");
+                  if (upd?.newHandle) {
+                    try { (clientWs as any)._lastResumptionHandle = upd.newHandle; } catch {}
+                  }
                 }
               },
               onclose: () => {

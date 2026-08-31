@@ -11,7 +11,15 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "core": ".venv/bin/python main.py",
+    "core:standalone": ".venv/bin/python main.py --standalone-audio",
+    "build:cpp": "make -C workers_cpp",
+    "build:memory": "cd memory_engine && cargo build --release",
+    "build:gateway": "cd gateway_rust && cargo build --release",
+    "build:native": "npm run build:cpp && npm run build:memory && npm run build:gateway",
+    "memory:init": "./memory_engine/target/release/jarvis-memory-engine init",
+    "memory:serve": "./memory_engine/target/release/jarvis-memory-engine serve"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
