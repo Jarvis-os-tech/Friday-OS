@@ -183,9 +183,31 @@ class GeminiLiveSession:
                             await self.ws.close()
                         except Exception:
                             pass
-                    # Auto-reconnect cleanly
-                    asyncio.create_task(self.connect(self.voice_name))
+                    # Auto-reconnect cleanly with backoff (aligns with Rust bridge 1s->30s)
+                    async def _reconnect():
+                        await asyncio.sleep(1)
+                        await self.connect(self.voice_name)
+                    asyncio.create_task(_reconnect())
                     return
+
+                # Session resumption handle (2h window)
+                if "sessionResumptionUpdate" in data:
+                    upd = data["sessionResumptionUpdate"]
+                    handle = upd.get("newHandle") or upd.get("handle")
+                    if handle:
+                        print(f"[GeminiLive] SessionResumptionUpdate handle stored (2h window)")
+
+                # Transcriptions (when enabled)
+                server_content = data.get("serverContent")
+                if server_content:
+                    inp_tr = server_content.get("inputTranscription")
+                    if inp_tr and inp_tr.get("text"):
+                        txt = inp_tr["text"]
+                        self._emit({"type": "input_transcription", "text": txt})
+                        memory_engine.log_conversation_turn("User (Gopi)", txt, role="user")
+                    out_tr = server_content.get("outputTranscription")
+                    if out_tr and out_tr.get("text"):
+                        self._emit({"type": "output_transcription", "text": out_tr["text"]})
 
                 # 1. Handle Model Audio Turn
                 server_content = data.get("serverContent")
