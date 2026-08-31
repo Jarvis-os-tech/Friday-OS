@@ -913,6 +913,83 @@ export default function App() {
   const handleMultiSend = async (text: string, attachments: InputAttachment[]) => {
     if (!text.trim() && attachments.length === 0) return;
 
+    // --- /voice slash command: real-time conversation mode ---
+    // /voice on|start|connect|live -> connect live session
+    // /voice off|stop|disconnect|end -> disconnect
+    // /voice <text> -> auto-connect if needed, then send <text> via Gemini Live realtime (audio duplex)
+    // Bare /voice -> toggle connect
+    const trimmed = text.trim();
+    const lowerTrim = trimmed.toLowerCase();
+    const isVoiceCmd = lowerTrim === '/voice' || lowerTrim.startsWith('/voice ') || lowerTrim.startsWith('/voice\t');
+    if (isVoiceCmd) {
+      const arg = trimmed.slice(6).trim(); // after "/voice"
+      const argLower = arg.toLowerCase();
+
+      // Control subcommands
+      if (argLower === '' || argLower === 'on' || argLower === 'start' || argLower === 'connect' || argLower === 'live' || argLower === 'open') {
+        if (isConnected) {
+          setMessages((prev) => [...prev, { id: `sys-${Date.now()}`, role: 'agent', text: 'Voice is already live — speak naturally, I am listening in real-time.', timestamp: Date.now() } as any]);
+          return;
+        }
+        setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: 'user', text: '/voice', timestamp: Date.now() } as any]);
+        VerbalFeedbackEngine.playChime('task_started');
+        await connectSession();
+        return;
+      }
+      if (argLower === 'off' || argLower === 'stop' || argLower === 'disconnect' || argLower === 'end' || argLower === 'close' || argLower === 'quit' || argLower === 'exit') {
+        if (!isConnected) {
+          setMessages((prev) => [...prev, { id: `sys-${Date.now()}`, role: 'agent', text: 'Voice is already idle.', timestamp: Date.now() } as any]);
+          return;
+        }
+        setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: 'user', text: '/voice off', timestamp: Date.now() } as any]);
+        disconnectSession();
+        setMessages((prev) => [...prev, { id: `sys-${Date.now()}`, role: 'agent', text: 'Voice session ended.', timestamp: Date.now() } as any]);
+        return;
+      }
+
+      // /voice <text> — realtime conversation: auto-connect then send via Live
+      const voiceText = arg;
+      if (voiceText) {
+        // Show user turn
+        const userMsg: MessageExchange = { id: `user-${Date.now()}`, role: 'user', text: voiceText, timestamp: Date.now() };
+        setMessages((prev) => [...prev, userMsg]);
+        VerbalFeedbackEngine.playChime('task_started');
+
+        // If not connected, connect first then send as realtime once ready
+        if (!isConnected || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          await connectSession();
+          // Wait for session_ready (max 4s), then send
+          const start = Date.now();
+          while (Date.now() - start < 4000) {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && status !== 'idle' && status !== 'connecting') break;
+            // also check wsRef directly — after connectSession, ws becomes OPEN quickly
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              // give server a moment to create liveSession
+              await new Promise((r) => setTimeout(r, 400));
+              break;
+            }
+            await new Promise((r) => setTimeout(r, 120));
+          }
+        }
+        // Send via realtime Live if possible
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          try {
+            setStatus('thinking');
+            wsRef.current.send(JSON.stringify({ type: 'text_prompt', text: voiceText }));
+            return;
+          } catch (e) {
+            console.warn('Live send failed for /voice, falling back to flash:', e);
+          }
+        }
+        // Fallback to flash if live not available (should rarely happen)
+        // fall through to normal flash path with voiceText
+        text = voiceText;
+        // attachments already empty for /voice text, continue to flash path below
+      } else {
+        return;
+      }
+    }
+
     // 1. Acoustic & UI Feedback Trigger
     VerbalFeedbackEngine.playChime('task_started');
 
