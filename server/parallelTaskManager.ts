@@ -15,6 +15,7 @@ export type TaskCategory =
   | "research"
   | "productivity"
   | "hermes"
+  | "openclaw"
   | "prime_agent"
   | "ultron"
   | "obsidian"
@@ -59,6 +60,10 @@ export function generateVerbalAcknowledgment(category: TaskCategory, target?: st
       return target
         ? `Routing complex task to Hermes: ${target.slice(0, 40)}.`
         : "Routing complex request to Hermes personal intelligence.";
+    case "openclaw":
+      return target
+        ? `Dispatching task to OpenClaw: ${target.slice(0, 40)}.`
+        : "Routing request to OpenClaw autonomous agent gateway.";
     case "system":
       return target
         ? `Executing system control: ${target}.`
@@ -90,6 +95,7 @@ export function generateVerbalAcknowledgment(category: TaskCategory, target?: st
 
 export function inferCategoryFromSkill(skillName: string): TaskCategory {
   if (skillName.includes("prime") || skillName.includes("coding")) return "prime_agent";
+  if (skillName.includes("openclaw") || skillName.includes("claw")) return "openclaw";
   if (skillName.includes("ultron")) return "ultron";
   if (skillName.includes("hermes")) return "hermes";
   if (skillName.includes("system") || skillName.includes("launch") || skillName.includes("process") || skillName.includes("control")) return "system";
@@ -226,6 +232,9 @@ class ParallelTaskManager {
       } else if (options.skillName?.includes("prime") || options.skillName?.includes("coding")) {
         const pp = options.args?.prompt || options.prompt;
         title = pp ? `Prime Agent ⟶ ${pp.slice(0, 60)}` : "Prime Coding Delegation";
+      } else if (options.skillName?.includes("openclaw") || options.skillName?.includes("claw")) {
+        const op = options.args?.prompt || options.prompt;
+        title = op ? `OpenClaw ⟶ ${op.slice(0, 60)}` : "OpenClaw Gateway Delegation";
       } else if (options.skillName?.includes("ultron")) {
         title = `Ultron ⟶ ${options.args?.action || "System Audit & Optimization"}`;
       } else if (options.skillName?.includes("hermes")) {

@@ -75,6 +75,8 @@ export const ParallelTaskDock: React.FC<ParallelTaskDockProps> = ({
         return <FileText className={className} />;
       case 'hermes':
         return <Bot className={className} />;
+      case 'openclaw':
+        return <Cpu className={className} />;
       case 'research':
         return <Search className={className} />;
       case 'calculation':
@@ -102,6 +104,8 @@ export const ParallelTaskDock: React.FC<ParallelTaskDockProps> = ({
         return 'text-emerald-400 border-emerald-500/30 bg-emerald-950/70';
       case 'hermes':
         return 'text-purple-400 border-purple-500/30 bg-purple-950/70';
+      case 'openclaw':
+        return 'text-emerald-400 border-emerald-500/30 bg-emerald-950/70';
       case 'research':
         return 'text-cyan-400 border-cyan-500/30 bg-cyan-950/70';
       default:
@@ -128,6 +132,10 @@ export const ParallelTaskDock: React.FC<ParallelTaskDockProps> = ({
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-500/40 text-purple-300 shrink-0">
             <Bot className="w-2.5 h-2.5" />
             Hermes
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 shrink-0">
+            <Cpu className="w-2.5 h-2.5" />
+            OpenClaw
           </span>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-950/60 border border-red-500/40 text-red-300 shrink-0">
             <ShieldAlert className="w-2.5 h-2.5" />

@@ -773,6 +773,60 @@ export const hermesSkill: ModularSkill = {
 export const hermesChatSkill = hermesSkill;
 
 // ─────────────────────────────────────────────────────────────
+// OpenClaw Autonomous Agent Gateway Delegation Skill
+// ─────────────────────────────────────────────────────────────
+export const openclawSkill: ModularSkill = {
+  name: "delegate_to_openclaw",
+  displayName: "OpenClaw Agent Delegation",
+  description:
+    "Delegate tasks to OpenClaw autonomous agent gateway (port 18789) for multimodal workspace actions, coding, and tool execution.",
+  icon: "Cpu",
+  category: "System",
+  declaration: {
+    name: "delegate_to_openclaw",
+    description:
+      "Delegate tasks to the OpenClaw autonomous agent gateway on port 18789. Call this for tasks requiring OpenClaw multimodal models, tools, or workspace actions.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        prompt: {
+          type: Type.STRING,
+          description: "Task specification or message for the OpenClaw agent.",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  execute: async (args: { prompt: string }) => {
+    const task = args.prompt?.trim();
+    if (!task) {
+      return { success: false, data: { error: "prompt required" }, speechSummary: "No task provided for OpenClaw." };
+    }
+    const r = await execOpenClaw(task);
+    if (!r.success) {
+      return {
+        success: false,
+        data: { error: r.error },
+        speechSummary: `OpenClaw is currently offline or unreachable: ${r.error?.slice(0, 160) || "unknown error"}.`,
+      };
+    }
+    const speech = r.text.slice(0, 800);
+    return {
+      success: true,
+      data: { response: r.text, sessionId: r.sessionId, model: r.model },
+      speechSummary: speech,
+      displayCard: {
+        type: "openclaw_response",
+        title: `OpenClaw ⟶ ${task.slice(0, 50)}`,
+        data: { text: r.text, prompt: task, sessionId: r.sessionId, model: r.model },
+      },
+    };
+  },
+};
+
+export const openclawChatSkill = openclawSkill;
+
+// ─────────────────────────────────────────────────────────────
 // Instant Friday System Information Skill (Fast Path)
 // ─────────────────────────────────────────────────────────────
 export const systemInfoSkill: ModularSkill = {
@@ -1426,7 +1480,7 @@ export const delegateTaskSkill: ModularSkill = {
         target_agent: {
           type: Type.STRING,
           description:
-            "Optional explicit agent: 'prime_agent' (for coding/testing/scripts), 'hermes' (for research/vault/reasoning), 'ultron' (for system/diagnostics/boost). If omitted, Friday auto-routes to the best agent.",
+            "Optional explicit agent: 'prime_agent' (for coding/testing/scripts), 'hermes' (for research/vault/reasoning), 'openclaw' (for workspace/multimodal tools), 'ultron' (for system/diagnostics/boost). If omitted, Friday auto-routes to the best agent.",
         },
         profile: {
           type: Type.STRING,
@@ -1436,8 +1490,8 @@ export const delegateTaskSkill: ModularSkill = {
       required: ["task"],
     },
   },
-  execute: async (args: { task: string; target_agent?: string; profile?: string }) => {
-    const task = args.task?.trim();
+  execute: async (args: { task?: string; prompt?: string; target_agent?: string; profile?: string }) => {
+    const task = args.prompt?.trim() || args.task?.trim();
     if (!task) {
       return { success: false, data: { error: "task required" }, speechSummary: "No task was provided to delegate." };
     }
@@ -1460,6 +1514,11 @@ export const delegateTaskSkill: ModularSkill = {
       ) {
         agent = "prime_agent";
       } else if (
+        lower.includes("openclaw") ||
+        lower.includes("claw")
+      ) {
+        agent = "openclaw";
+      } else if (
         lower.includes("boost") ||
         lower.includes("ram") ||
         lower.includes("clean memory") ||
@@ -1476,6 +1535,8 @@ export const delegateTaskSkill: ModularSkill = {
 
     if (agent === "prime_agent" || agent.includes("prime") || agent.includes("coder")) {
       return await primeAgentSkill.execute({ prompt: task });
+    } else if (agent === "openclaw" || agent.includes("openclaw") || agent.includes("claw")) {
+      return await openclawSkill.execute({ prompt: task });
     } else if (agent === "ultron") {
       return await ultronSkill.execute({ action: "deep_audit" });
     } else {
@@ -1495,6 +1556,8 @@ export const MODULAR_SKILLS: Record<string, ModularSkill> = {
   delegate_task: delegateTaskSkill,
   delegate_to_prime_agent: primeAgentSkill,
   coding_agent: primeAgentSkill,
+  delegate_to_openclaw: openclawSkill,
+  openclaw_chat: openclawSkill,
   delegate_to_ultron: ultronSkill,
   ultron_system_boost: ultronSkill,
   delegate_to_hermes: hermesSkill,

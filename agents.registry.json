@@ -37,6 +37,17 @@
       "status": "ready",
       "capabilities": ["web-research", "vault-queries", "source-grounding", "autonomous-cli"]
     },
+    "openclaw": {
+      "id": "openclaw",
+      "name": "OpenClaw Autonomous Gateway",
+      "role": "Autonomous Gateway & Multimodal Specialist",
+      "description": "Autonomous multi-agent gateway (nvidia/nemotron, claude, minimax) on port 18789 with sandboxed workspace and tools.",
+      "platform": "openclaw",
+      "bridge": "server/openclawBridge.ts",
+      "gatewayUrl": "http://127.0.0.1:18789",
+      "status": "ready",
+      "capabilities": ["multimodal-agent", "workspace-tools", "gateway-delegation", "subagent-sessions"]
+    },
     "ultron": {
       "id": "ultron",
       "name": "Ultron OS Diagnostics & Boost Engine",
@@ -157,6 +168,17 @@
       "parameters": {
         "prompt": { "type": "string", "description": "The complete prompt for Hermes" },
         "max_turns": { "type": "number", "description": "Max execution turns (default 12)" }
+      },
+      "executionMode": "async-parallel",
+      "source": "server/skills.ts"
+    },
+    "delegate_to_openclaw": {
+      "name": "delegate_to_openclaw",
+      "displayName": "OpenClaw Gateway Delegation",
+      "category": "Productivity",
+      "description": "Delegates multimodal tasks, agent workspace commands, or specialized models to OpenClaw gateway on port 18789.",
+      "parameters": {
+        "prompt": { "type": "string", "description": "The complete prompt for OpenClaw" }
       },
       "executionMode": "async-parallel",
       "source": "server/skills.ts"

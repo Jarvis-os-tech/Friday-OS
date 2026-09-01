@@ -23,6 +23,11 @@ const ACKNOWLEDGMENT_VARIATIONS: Record<string, string[]> = {
     "Routing task to Hermes personal intelligence.",
     "Delegating complex workflow to Hermes.",
   ],
+  openclaw: [
+    "Dispatching task to OpenClaw autonomous gateway.",
+    "Routing request to OpenClaw multimodal agent.",
+    "Connecting to OpenClaw workspace.",
+  ],
   weather: [
     "Checking live weather conditions and forecast now.",
     "Scanning meteorological data for you.",
@@ -85,6 +90,8 @@ export function getContextualVerbalPhrase(intentOrSkill?: string, target?: strin
     category = "obsidian";
   } else if (lower.includes("hermes") || lower.includes("memory")) {
     category = "hermes";
+  } else if (lower.includes("openclaw") || lower.includes("claw")) {
+    category = "openclaw";
   } else if (lower.includes("reminder") || lower.includes("alarm") || lower.includes("schedule")) {
     category = "productivity";
   } else if (lower.includes("calc") || lower.includes("math") || lower.includes("solve")) {

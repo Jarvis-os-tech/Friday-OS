@@ -15,6 +15,7 @@ import {
 } from "./server/skills";
 import { checkHermesHealth, execHermes, getVaultPath } from "./server/hermesBridge.js";
 import { checkPrimeHealth, execPrimeAgent } from "./server/primeBridge.js";
+import { checkOpenClawHealth, execOpenClaw } from "./server/openclawBridge.js";
 import { runUltronSystemAction, runUltronDeepAudit, getOpenClawStatus } from "./server/ultronBridge.js";
 import {
   writeMemoryEntry,
@@ -574,21 +575,49 @@ app.post("/api/ultron/execute", async (req, res) => {
 });
 
 // ── OpenClaw REST ────────────────────────────────────────────
+app.get("/api/openclaw/health", async (req, res) => {
+  try {
+    const h = await checkOpenClawHealth();
+    const connected = h.ok && h.gatewayRunning;
+    res.json({
+      openclaw: h,
+      connected, // true when gateway is running and reachable on :18789
+      delegation: h.installed ? "ready" : "unavailable",
+      workspace: h.workspace,
+      model: h.primaryModel,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "OpenClaw health check failed" });
+  }
+});
+
 app.get("/api/openclaw/status", async (req, res) => {
   try {
-    const { getOpenClawStatus } = await import("./server/ultronBridge.js");
-    const status = await getOpenClawStatus();
-    res.json(status);
+    const h = await checkOpenClawHealth();
+    res.json(h);
   } catch (err: any) {
     res.status(500).json({ error: err.message || "OpenClaw status failed" });
   }
 });
 
+app.post("/api/openclaw/chat", async (req, res) => {
+  try {
+    const { prompt, timeout, model } = req.body || {};
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "prompt is required" });
+    }
+    const r = await execOpenClaw(prompt, { timeout, model });
+    res.json(r);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "OpenClaw chat failed" });
+  }
+});
+
 app.post("/api/openclaw/delegate", async (req, res) => {
   try {
-    const { prompt, timeout } = req.body || {};
+    const { prompt, timeout, model } = req.body || {};
     if (!prompt) return res.status(400).json({ error: "prompt is required" });
-    const r = await runUltronSystemAction("openclaw_delegate", { prompt, timeout });
+    const r = await execOpenClaw(prompt, { timeout, model });
     res.json(r);
   } catch (err: any) {
     res.status(500).json({ error: err.message || "OpenClaw delegation failed" });
@@ -1642,13 +1671,15 @@ Fluency, Spoken Delivery & Proactive Manager Guidelines:
         Whenever the user asks for code generation, software development, debugging, refactoring, building projects, writing code files, test suites, or running programming scripts, you MUST invoke 'delegate_to_prime_agent' (or 'delegate_task').
       - 🔹 'delegate_to_hermes': DELEGATE DEEP WEB RESEARCH & PERSONAL VAULT SYNTHESIS TO HERMES.
         Whenever the user asks for complex multi-step reasoning, deep research, or personal memory vault synthesis, invoke 'delegate_to_hermes'.
+      - 🔹 'delegate_to_openclaw': DELEGATE WORKSPACE ACTIONS, MULTIMODAL TOOL OPERATIONS & AGENT TASKS TO OPENCLAW.
+        Whenever the user asks for OpenClaw gateway tasks, workspace operations, or multimodal subagent sessions, invoke 'delegate_to_openclaw'.
       - 🔹 'delegate_to_ultron': DELEGATE DEEP OS DIAGNOSTICS & SYSTEM BOOST TO ULTRON.
         Whenever the user asks for deep system diagnostics, RAM cache reclamation, subsystem self-healing, or security port auditing, invoke 'delegate_to_ultron'.
-      - 🌐 'delegate_task': Universal smart delegation tool that automatically routes any complex goal to Prime Agent, Hermes, or Ultron.
+      - 🌐 'delegate_task': Universal smart delegation tool that automatically routes any complex goal to Prime Agent, Hermes, OpenClaw, or Ultron.
 
 7. SOVEREIGN SINGLE-VOICE DELIVERY:
    - You are F.R.I.D.A.Y. — the unified voice and sovereign master of this system. Speak with natural, sharp, and confident voice prosody.
-   - When delegating to Prime Agent, Ultron, or Hermes, acknowledge the delegation crisply and deliver the synthesized intelligence upon completion.
+   - When delegating to Prime Agent, OpenClaw, Ultron, or Hermes, acknowledge the delegation crisply and deliver the synthesized intelligence upon completion.
    - You have full sovereign access to all memory, preferences, and facts in 'friday-memory/'.
 ${(() => {
   const mem = getCoreMemoryPromptContext();

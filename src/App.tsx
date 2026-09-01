@@ -162,11 +162,34 @@ export default function App() {
     }
   }, []);
 
+  // OpenClaw Gateway connection status (consumes /api/openclaw/health)
+  type OpenClawConnState = 'checking' | 'live' | 'installed' | 'offline';
+  const [openclawConn, setOpenclawConn] = useState<OpenClawConnState>('checking');
+  const fetchOpenClawHealth = useCallback(async () => {
+    try {
+      const res = await fetch('/api/openclaw/health');
+      if (!res.ok) {
+        setOpenclawConn('offline');
+        return;
+      }
+      const data = await res.json();
+      if (data?.connected) setOpenclawConn('live');
+      else if (data?.delegation === 'ready') setOpenclawConn('installed');
+      else setOpenclawConn('offline');
+    } catch (e) {
+      setOpenclawConn('offline');
+    }
+  }, []);
+
   useEffect(() => {
     fetchHermesHealth();
-    const id = setInterval(fetchHermesHealth, 30_000);
+    fetchOpenClawHealth();
+    const id = setInterval(() => {
+      fetchHermesHealth();
+      fetchOpenClawHealth();
+    }, 30_000);
     return () => clearInterval(id);
-  }, [fetchHermesHealth]);
+  }, [fetchHermesHealth, fetchOpenClawHealth]);
 
   const fetchActiveTasks = useCallback(async () => {
     try {
@@ -1233,6 +1256,41 @@ export default function App() {
                   : hermesConn === 'cli'
                   ? 'bg-slate-300'
                   : hermesConn === 'offline'
+                  ? 'bg-rose-400'
+                  : 'bg-slate-500 animate-pulse'
+              }`}
+            />
+          </button>
+
+          {/* OpenClaw Gateway live status pill */}
+          <button
+            id="openclaw-gateway-status"
+            onClick={fetchOpenClawHealth}
+            title="OpenClaw gateway status (port 18789) — click to refresh"
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border transition-colors ${
+              openclawConn === 'live'
+                ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)]'
+                : openclawConn === 'installed'
+                ? 'bg-amber-500/15 border-amber-400/50 text-amber-300'
+                : openclawConn === 'offline'
+                ? 'bg-rose-500/15 border-rose-400/50 text-rose-300'
+                : 'bg-slate-800/40 border-slate-600/50 text-slate-400'
+            }`}
+          >
+            <Cpu className="w-3 h-3" />
+            <span>
+              {openclawConn === 'live' && 'OPENCLAW LIVE'}
+              {openclawConn === 'installed' && 'OPENCLAW READY'}
+              {openclawConn === 'offline' && 'OPENCLAW OFFLINE'}
+              {openclawConn === 'checking' && 'OPENCLAW…'}
+            </span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                openclawConn === 'live'
+                  ? 'bg-emerald-400 animate-pulse'
+                  : openclawConn === 'installed'
+                  ? 'bg-amber-400'
+                  : openclawConn === 'offline'
                   ? 'bg-rose-400'
                   : 'bg-slate-500 animate-pulse'
               }`}
