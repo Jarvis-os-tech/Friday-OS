@@ -284,30 +284,182 @@ async def _handle_remind(chat_id: int, text: str) -> str:
         return f"❌ Reminder error: {e}"
 
 
+def _normalize_schema(val: Any) -> Any:
+    """Normalize schema types to lowercase for OpenAI/Groq compatibility."""
+    if isinstance(val, dict):
+        new_d = {}
+        for k, v in val.items():
+            if k == "type" and isinstance(v, str):
+                new_d[k] = v.lower()
+            else:
+                new_d[k] = _normalize_schema(v)
+        return new_d
+    elif isinstance(val, list):
+        return [_normalize_schema(i) for i in val]
+    return val
+
+
+CORE_GROQ_TOOL_NAMES = {
+    "get_system_telemetry", "get_battery_status", "get_thermal_sensors",
+    "get_storage_usage", "get_pc_spec", "set_system_volume",
+    "set_display_brightness", "run_full_system_diagnostics",
+    "system_power_action", "search_memory_vault", "save_memory_fact",
+    "execute_linux_command"
+}
+
+
+def _get_groq_tools() -> List[Dict[str, Any]]:
+    """Build lightweight, high-speed OpenAI-compatible tool specs for Groq."""
+    try:
+        gemini_tools = _get_actuator().get_tool_declarations()
+        groq_tools = []
+        for t in gemini_tools:
+            if t.get("name") not in CORE_GROQ_TOOL_NAMES:
+                continue
+            params = t.get("parameters", {})
+            if not params or not isinstance(params, dict):
+                params = {"type": "object", "properties": {}}
+            norm_params = _normalize_schema(params)
+            if "type" not in norm_params:
+                norm_params["type"] = "object"
+            groq_tools.append({
+                "type": "function",
+                "function": {
+                    "name": t.get("name"),
+                    "description": t.get("description", ""),
+                    "parameters": norm_params
+                }
+            })
+        return groq_tools
+    except Exception as e:
+        log.warning(f"Error preparing Groq tools: {e}")
+        return []
+
+
+async def _execute_groq_turn(groq_key: str, text: str) -> Optional[str]:
+    """Execute ultra-fast tool-calling turn with Groq."""
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {groq_key}",
+        "Content-Type": "application/json",
+        "User-Agent": "Friday-OS/1.0",
+    }
+    tools = _get_groq_tools()
+    system_prompt = (
+        "You are F.R.I.D.A.Y., sovereign AI Chief of Staff and tactical operating partner. "
+        "You have direct hardware actuators and operating system tools. "
+        "When the user requests system actions, status checks, volume/brightness changes, or diagnostic sweeps, call the appropriate tool. "
+        "Keep responses razor-sharp, concise, and loyal."
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": text},
+    ]
+
+    async with aiohttp.ClientSession() as session:
+        payload: Dict[str, Any] = {
+            "model": "qwen/qwen3.8-27b",
+            "messages": messages,
+            "temperature": 0.5,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+
+        async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                err_text = await resp.text()
+                log.warning(f"Groq tool call error ({resp.status}): {err_text[:200]}")
+                return None
+            data = await resp.json()
+
+        choice = data["choices"][0]["message"]
+        tool_calls = choice.get("tool_calls", [])
+
+        if not tool_calls:
+            return choice.get("content")
+
+        log.info(f"⚡ Groq Fast Tool Calling triggered {len(tool_calls)} tool(s)!")
+        tool_results = []
+        for tc in tool_calls:
+            fn_name = tc["function"]["name"]
+            try:
+                fn_args = json.loads(tc["function"]["arguments"])
+            except Exception:
+                fn_args = {}
+            
+            log.info(f"-> Executing tool: {fn_name}({fn_args})")
+            act = _get_actuator()
+            result = await act.dispatch_tool(fn_name, fn_args)
+            tool_results.append({
+                "role": "tool",
+                "tool_call_id": tc.get("id", "call_1"),
+                "name": fn_name,
+                "content": json.dumps(result)[:2000]
+            })
+
+        # Send tool results back for final summary synthesis
+        second_payload = {
+            "model": "qwen/qwen3.8-27b",
+            "messages": messages + [choice] + tool_results,
+            "temperature": 0.5,
+        }
+        async with session.post(url, json=second_payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp2:
+            if resp2.status == 200:
+                data2 = await resp2.json()
+                return data2["choices"][0]["message"].get("content")
+
+    return None
+
+
 async def _handle_chat(chat_id: int, text: str) -> str:
-    """Conversational response via Gemini 3.7 Flash."""
-    if not GEMINI_API_KEY:
-        return "❌ GEMINI_API_KEY not configured in .env."
+    """Conversational & tool response via Groq Fast LPU (with Gemini fallback)."""
+    # 1. Try Groq for Ultra-Fast (<200ms) Tool Calling & Response
+    groq_key = os.getenv("GROQ_API_KEY") or os.getenv("qroq_API_KEY")
+    if groq_key:
+        try:
+            groq_reply = await _execute_groq_turn(groq_key, text)
+            if groq_reply:
+                return groq_reply[:4000]
+        except Exception as e:
+            log.warning(f"Groq turn fallback to Gemini: {e}")
+
+    # 2. Fallback to Gemini 3.6 Flash / 3.7 Flash
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or GEMINI_API_KEY
+    if not api_key:
+        return "❌ Neither GROQ_API_KEY nor GEMINI_API_KEY configured in .env."
 
     try:
         from google import genai
 
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model="gemini-3.7-flash",
-            contents=text,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=(
-                    "You are F.R.I.D.A.Y., Tony Stark's sophisticated AI voice partner and 24/7 personal manager. "
-                    "You are chatting with your Boss Gopi on Telegram while they are away from their PC. "
-                    "Tone: Razor-sharp, loyal, highly competent, proactive, concise, and mobile-friendly. "
-                    "You have a specialist agent fleet at your command: Prime Agent (coding), Hermes (deep research), and Ultron (OS diagnostics)."
-                ),
-                thinking_config=genai.types.ThinkingConfig(thinking_budget=0),
-                temperature=0.7,
-            ),
+        client = genai.Client(api_key=api_key)
+        system_instruction = (
+            "You are F.R.I.D.A.Y., Tony Stark's sophisticated AI voice partner and 24/7 personal manager. "
+            "You are chatting with your Boss Gopi on Telegram while they are away from their PC. "
+            "Tone: Razor-sharp, loyal, highly competent, proactive, concise, and mobile-friendly. "
+            "You have a specialist agent fleet at your command: Prime Agent (coding), Hermes (deep research), and Ultron (Security & OS diagnostics)."
         )
-        return response.text[:4000] if response.text else "..."
+
+        candidate_models = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3-flash-preview"]
+        last_err = None
+        for model_name in candidate_models:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=text,
+                    config=genai.types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        temperature=0.7,
+                    ),
+                )
+                if response and response.text:
+                    return response.text[:4000]
+            except Exception as ex:
+                last_err = ex
+                log.warning(f"Model {model_name} attempt failed ({ex}), trying next fallback...")
+
+        raise last_err or RuntimeError("No model response")
     except Exception as e:
         log.error(f"Gemini chat error: {e}")
         return f"❌ Chat error: {e}"
