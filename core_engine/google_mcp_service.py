@@ -19,8 +19,8 @@ from typing import Dict, Any, List, Optional
 
 TOKEN_FILE = Path.home() / ".config" / "friday-os" / "google_tokens.json"
 
-CLIENT_ID     = ""
-CLIENT_SECRET = ""
+CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 TOKEN_URL     = "https://oauth2.googleapis.com/token"
 
 GMAIL_BASE    = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -29,6 +29,22 @@ TASKS_BASE    = "https://tasks.googleapis.com/tasks/v1"
 
 
 # ─── Token Management ──────────────────────────────────────────────────────────
+
+def _get_client_creds():
+    client_id = os.getenv("GOOGLE_CLIENT_ID") or CLIENT_ID
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET") or CLIENT_SECRET
+    if not client_id or not client_secret:
+        cs_path = Path.home() / ".config" / "gws" / "client_secret.json"
+        if cs_path.exists():
+            try:
+                with open(cs_path) as f:
+                    cs = json.load(f).get("installed", {})
+                    client_id = cs.get("client_id", client_id)
+                    client_secret = cs.get("client_secret", client_secret)
+            except Exception:
+                pass
+    return client_id, client_secret
+
 
 def _load_tokens() -> Dict[str, Any]:
     if not TOKEN_FILE.exists():
@@ -46,9 +62,13 @@ def _save_tokens(tokens: Dict[str, Any]):
 
 
 def _refresh_access_token(refresh_token: str) -> Dict[str, Any]:
+    client_id, client_secret = _get_client_creds()
+    if not client_id or not client_secret:
+        raise RuntimeError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured in .env")
+
     data = urllib.parse.urlencode({
-        "client_id":     CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
+        "client_id":     client_id,
+        "client_secret": client_secret,
         "refresh_token": refresh_token,
         "grant_type":    "refresh_token",
     }).encode()
@@ -56,6 +76,7 @@ def _refresh_access_token(refresh_token: str) -> Dict[str, Any]:
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
     with urllib.request.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read())
+
 
 
 def _get_valid_access_token() -> str:

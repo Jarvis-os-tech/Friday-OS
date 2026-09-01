@@ -72,9 +72,29 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+def load_env_file():
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("\"'")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+
 def main():
-    if not CLIENT_SECRET_PATH.exists():
-        print(f"Error: client_secret.json not found at {CLIENT_SECRET_PATH}")
+    load_env_file()
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+    has_secret_file = CLIENT_SECRET_PATH.exists()
+    has_env_creds = bool(client_id and client_secret)
+
+    if not has_secret_file and not has_env_creds:
+        print(f"Error: Neither client_secret.json at {CLIENT_SECRET_PATH} nor GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env were found.")
         sys.exit(1)
 
     for p in TOKEN_OUTPUT_PATHS:
@@ -88,11 +108,27 @@ def main():
     for s in SCOPES:
         print(f"  ✓ {s}")
 
-    flow = Flow.from_client_secrets_file(
-        str(CLIENT_SECRET_PATH),
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI
-    )
+    if has_secret_file:
+        flow = Flow.from_client_secrets_file(
+            str(CLIENT_SECRET_PATH),
+            scopes=SCOPES,
+            redirect_uri=REDIRECT_URI
+        )
+    else:
+        client_config = {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [REDIRECT_URI]
+            }
+        }
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=SCOPES,
+            redirect_uri=REDIRECT_URI
+        )
 
     auth_url, state = flow.authorization_url(
         access_type="offline",
@@ -121,11 +157,17 @@ def main():
         token_data = json.loads(creds.to_json())
     except Exception as e:
         print(f"Flow fetch_token note: {e}, using direct token exchange fallback...")
-        with open(CLIENT_SECRET_PATH) as f:
-            cs = json.load(f).get("installed", {})
+        active_client_id = client_id
+        active_client_secret = client_secret
+        if has_secret_file:
+            with open(CLIENT_SECRET_PATH) as f:
+                cs = json.load(f).get("installed", {})
+                active_client_id = cs.get("client_id", active_client_id)
+                active_client_secret = cs.get("client_secret", active_client_secret)
+
         resp = requests.post("https://oauth2.googleapis.com/token", data={
-            "client_id": cs["client_id"],
-            "client_secret": cs["client_secret"],
+            "client_id": active_client_id,
+            "client_secret": active_client_secret,
             "code": received_code,
             "code_verifier": flow.code_verifier,
             "grant_type": "authorization_code",
