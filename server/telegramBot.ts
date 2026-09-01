@@ -491,6 +491,15 @@ export async function startTelegramBot(): Promise<void> {
     return;
   }
 
+  // If Python 24/7 gateway is active, delegate Telegram handling to Python core
+  try {
+    const healthCheck = await fetch("http://127.0.0.1:8001/health", { signal: AbortSignal.timeout(600) });
+    if (healthCheck.ok) {
+      console.log("[TelegramBot] 🐍 Python 24/7 Gateway daemon is active on port 8001. Telegram polling delegated to Python core.");
+      return;
+    }
+  } catch {}
+
   if (!isTelegramConfigured()) {
     console.log("[TelegramBot] Not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env");
     return;

@@ -47,6 +47,20 @@ from core_engine.main import main as core_main
 RUST_GATEWAY_BIN = os.path.join(os.path.dirname(__file__), "gateway_rust", "target", "release", "jarvis-gateway")
 
 
+def ensure_gateway_service():
+    """Ensure the 24/7 Python Telegram & Heartbeat gateway service is running."""
+    try:
+        res = subprocess.run(["systemctl", "--user", "is-active", "friday-gateway.service"],
+                             capture_output=True, text=True)
+        if res.returncode != 0 or res.stdout.strip() != "active":
+            print("[Launcher] 🔄 Starting 24/7 Friday-OS Gateway service...")
+            subprocess.run(["systemctl", "--user", "start", "friday-gateway.service"], capture_output=True)
+        else:
+            print("[Launcher] 🟢 24/7 Friday-OS Gateway service active & running.")
+    except Exception:
+        pass
+
+
 def spawn_rust_audio_gateway():
     """
     Spawns the Rust audio gateway in the background if compiled.
@@ -65,6 +79,7 @@ def spawn_rust_audio_gateway():
 
 
 if __name__ == "__main__":
+    ensure_gateway_service()
     rust_proc = None
     if "--standalone-audio" in sys.argv:
         sys.argv.remove("--standalone-audio")

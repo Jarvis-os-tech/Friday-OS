@@ -139,7 +139,7 @@ export async function execOpenClaw(
   opts?: { timeout?: number; model?: string }
 ): Promise<OpenClawResult> {
   const cfg = readOpenClawConfig();
-  const token = cfg?.gateway?.auth?.token;
+  const token = process.env.OPENCLAW_GATEWAY_TOKEN || cfg?.gateway?.auth?.token;
   const timeout = opts?.timeout ?? 60_000;
   const model = opts?.model || cfg?.agents?.defaults?.model?.primary || "nvidia/nemotron-3-ultra-550b-a55b";
 
