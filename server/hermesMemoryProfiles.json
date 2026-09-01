@@ -1,0 +1,67 @@
+{
+  "profiles": {
+    "research": {
+      "external_memory": {
+        "provider": "obsidian",
+        "vault_path": "/home/gopi/Downloads/Friday-OS/friday-memory/research",
+        "read_only": false,
+        "scope": "department",
+        "index_file": "_index.json"
+      }
+    },
+    "coder": {
+      "external_memory": {
+        "provider": "obsidian",
+        "vault_path": "/home/gopi/Downloads/Friday-OS/friday-memory/coder",
+        "read_only": false,
+        "scope": "department",
+        "index_file": "_index.json"
+      }
+    },
+    "personal": {
+      "external_memory": {
+        "provider": "obsidian",
+        "vault_path": "/home/gopi/Downloads/Friday-OS/friday-memory/personal",
+        "read_only": false,
+        "scope": "department",
+        "index_file": "_index.json"
+      }
+    },
+    "finance": {
+      "external_memory": {
+        "provider": "obsidian",
+        "vault_path": "/home/gopi/Downloads/Friday-OS/friday-memory/finance",
+        "read_only": false,
+        "scope": "department",
+        "index_file": "_index.json"
+      }
+    },
+    "creative": {
+      "external_memory": {
+        "provider": "obsidian",
+        "vault_path": "/home/gopi/Downloads/Friday-OS/friday-memory/creative",
+        "read_only": false,
+        "scope": "department",
+        "index_file": "_index.json"
+      }
+    },
+    "ops": {
+      "external_memory": {
+        "provider": "obsidian",
+        "vault_path": "/home/gopi/Downloads/Friday-OS/friday-memory/ops",
+        "read_only": false,
+        "scope": "department",
+        "index_file": "_index.json"
+      }
+    },
+    "default": {
+      "external_memory": {
+        "provider": "obsidian",
+        "vault_path": "/home/gopi/Downloads/Friday-OS/friday-memory/default",
+        "read_only": false,
+        "scope": "department",
+        "index_file": "_index.json"
+      }
+    }
+  }
+}

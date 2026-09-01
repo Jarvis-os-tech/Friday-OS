@@ -1,0 +1,33 @@
+[package]
+name = "jarvis-memory-engine"
+version = "0.1.0"
+edition = "2021"
+description = "JARVIS Universal Memory + Context Engine"
+
+[dependencies]
+rusqlite = { version = "0.34", features = ["bundled", "vtab", "blob"] }
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["json", "ws"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+regex = "1"
+sha2 = "0.10"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+dirs = "5"
+notify = "8"
+futures-util = "0.3"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

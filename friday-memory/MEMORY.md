@@ -33,3 +33,4 @@
 - Always verify outputs with actual tool executions. Never hallucinate fake metrics or file contents.
 - If a command succeeds, state the outcome directly. If it fails, report the exact error clearly.
 - § [OPERATOR_PROFILE] obsidian_sync_folder: friday-memory
+- § [SYSTEM] [[facts/test_key|test_key]]: test_value

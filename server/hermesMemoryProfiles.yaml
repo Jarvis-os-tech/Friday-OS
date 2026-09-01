@@ -1,0 +1,80 @@
+# Friday-OS Hermes External Memory Provider Configs
+# One per department profile — place in ~/.hermes/profiles/<dept>/config.yaml
+# or reference via HERMES_EXTERNAL_MEMORY_PROVIDER env var
+
+# ============================================================
+# RESEARCH PROFILE
+# ============================================================
+research:
+  external_memory:
+    provider: "obsidian"
+    vault_path: "/home/gopi/Downloads/Friday-OS/friday-memory/research"
+    read_only: false
+    scope: "department"
+    index_file: "_index.json"
+
+# ============================================================
+# CODER PROFILE
+# ============================================================
+coder:
+  external_memory:
+    provider: "obsidian"
+    vault_path: "/home/gopi/Downloads/Friday-OS/friday-memory/coder"
+    read_only: false
+    scope: "department"
+    index_file: "_index.json"
+
+# ============================================================
+# PERSONAL PROFILE
+# ============================================================
+personal:
+  external_memory:
+    provider: "obsidian"
+    vault_path: "/home/gopi/Downloads/Friday-OS/friday-memory/personal"
+    read_only: false
+    scope: "department"
+    index_file: "_index.json"
+
+# ============================================================
+# FINANCE PROFILE
+# ============================================================
+finance:
+  external_memory:
+    provider: "obsidian"
+    vault_path: "/home/gopi/Downloads/Friday-OS/friday-memory/finance"
+    read_only: false
+    scope: "department"
+    index_file: "_index.json"
+
+# ============================================================
+# CREATIVE PROFILE
+# ============================================================
+creative:
+  external_memory:
+    provider: "obsidian"
+    vault_path: "/home/gopi/Downloads/Friday-OS/friday-memory/creative"
+    read_only: false
+    scope: "department"
+    index_file: "_index.json"
+
+# ============================================================
+# OPS PROFILE
+# ============================================================
+ops:
+  external_memory:
+    provider: "obsidian"
+    vault_path: "/home/gopi/Downloads/Friday-OS/friday-memory/ops"
+    read_only: false
+    scope: "department"
+    index_file: "_index.json"
+
+# ============================================================
+# DEFAULT PROFILE (fallback)
+# ============================================================
+default:
+  external_memory:
+    provider: "obsidian"
+    vault_path: "/home/gopi/Downloads/Friday-OS/friday-memory/default"
+    read_only: false
+    scope: "department"
+    index_file: "_index.json"

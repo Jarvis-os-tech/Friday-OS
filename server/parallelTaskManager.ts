@@ -1,6 +1,11 @@
 import { executeSkillByName, MODULAR_SKILLS } from "./skills";
 import { WebSocket } from "ws";
 import { logExecutionTrace } from "./memoryLogger.js";
+import {
+  notifyTaskComplete,
+  notifyProactiveAlert,
+  isTelegramConfigured,
+} from "./telegramNotifier.js";
 
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -10,6 +15,8 @@ export type TaskCategory =
   | "research"
   | "productivity"
   | "hermes"
+  | "prime_agent"
+  | "ultron"
   | "obsidian"
   | "calculation"
   | "data_fetch"
@@ -40,6 +47,22 @@ export interface BackgroundTask {
 
 export function generateVerbalAcknowledgment(category: TaskCategory, target?: string): string {
   switch (category) {
+    case "prime_agent":
+      return target
+        ? `Dispatching coding task to Prime Agent: ${target.slice(0, 40)}.`
+        : "Dispatching coding and software engineering task to Prime Agent.";
+    case "ultron":
+      return target
+        ? `Engaging Ultron for system diagnostics: ${target}.`
+        : "Engaging Ultron for deep system monitoring, diagnostics, and performance optimization.";
+    case "hermes":
+      return target
+        ? `Routing complex task to Hermes: ${target.slice(0, 40)}.`
+        : "Routing complex request to Hermes personal intelligence.";
+    case "system":
+      return target
+        ? `Executing system control: ${target}.`
+        : "Executing system command directly.";
     case "weather":
       return target
         ? `Checking live weather conditions and forecast for ${target} now.`
@@ -54,8 +77,6 @@ export function generateVerbalAcknowledgment(category: TaskCategory, target?: st
       return target
         ? `Searching your Obsidian vault for "${target}".`
         : "Looking up notes in your Obsidian vault.";
-    case "hermes":
-      return "Routing request to Hermes personal intelligence.";
     case "research":
       return target
         ? `Investigating web intelligence for "${target}".`
@@ -68,11 +89,14 @@ export function generateVerbalAcknowledgment(category: TaskCategory, target?: st
 }
 
 export function inferCategoryFromSkill(skillName: string): TaskCategory {
+  if (skillName.includes("prime") || skillName.includes("coding")) return "prime_agent";
+  if (skillName.includes("ultron")) return "ultron";
+  if (skillName.includes("hermes")) return "hermes";
+  if (skillName.includes("system") || skillName.includes("launch") || skillName.includes("process") || skillName.includes("control")) return "system";
   if (skillName.includes("weather")) return "weather";
   if (skillName.includes("news")) return "news";
   if (skillName.includes("reminder")) return "productivity";
   if (skillName.includes("obsidian")) return "obsidian";
-  if (skillName.includes("hermes")) return "hermes";
   if (skillName.includes("calculate")) return "calculation";
   return "data_fetch";
 }
@@ -92,6 +116,32 @@ class ParallelTaskManager {
 
   public unsubscribe(ws: WebSocket) {
     this.subscribers.delete(ws);
+  }
+
+  /**
+   * Returns true if at least one WebSocket client is connected.
+   * Used by the heartbeat engine to determine user presence:
+   *   - Connected = user is at the browser → use WebSocket notifications
+   *   - Not connected = user is away → route to Telegram
+   */
+  public hasActiveClients(): boolean {
+    for (const ws of this.subscribers) {
+      if (ws.readyState === WebSocket.OPEN) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Returns count of active WebSocket subscribers (for telemetry/debugging).
+   */
+  public getSubscriberCount(): number {
+    let count = 0;
+    for (const ws of this.subscribers) {
+      if (ws.readyState === WebSocket.OPEN) count++;
+    }
+    return count;
   }
 
   private broadcast(payload: any, targetWs?: WebSocket) {
@@ -173,12 +223,24 @@ class ParallelTaskManager {
         title = `Reminders: ${options.args?.action || "manage"}`;
       } else if (options.skillName?.startsWith("obsidian")) {
         title = `Obsidian: ${options.args?.query || options.args?.path || options.args?.title || "Vault Query"}`;
-      } else if (options.skillName === "hermes_chat") {
-        // Show the ACTUAL command FRIDAY delegated to Hermes, not a generic label.
+      } else if (options.skillName?.includes("prime") || options.skillName?.includes("coding")) {
+        const pp = options.args?.prompt || options.prompt;
+        title = pp ? `Prime Agent ⟶ ${pp.slice(0, 60)}` : "Prime Coding Delegation";
+      } else if (options.skillName?.includes("ultron")) {
+        title = `Ultron ⟶ ${options.args?.action || "System Audit & Optimization"}`;
+      } else if (options.skillName?.includes("hermes")) {
         const hp = options.args?.prompt || options.prompt;
-        title = hp ? `Hermes ⟶ ${hp.slice(0, 60)}` : "Hermes Delegation";
+        title = hp ? `Hermes ⟶ ${hp.slice(0, 60)}` : "Hermes Complex Delegation";
+      } else if (options.skillName === "get_system_info") {
+        title = "Friday System Telemetry";
+      } else if (options.skillName === "control_system") {
+        title = `System Control: ${options.args?.action || "Setting"}`;
+      } else if (options.skillName === "launch_application") {
+        title = `Launch App: ${options.args?.app_name || "Application"}`;
+      } else if (options.skillName === "manage_system_process") {
+        title = `Process Manager: ${options.args?.action || "Inspect"}`;
       } else {
-        title = options.prompt ? options.prompt.slice(0, 40) : "Parallel Data Fetch";
+        title = options.prompt ? options.prompt.slice(0, 40) : "Parallel Task Execution";
       }
     }
 
@@ -289,6 +351,15 @@ class ParallelTaskManager {
           },
           options.clientWs
         );
+
+        // 4. If user is away from browser, notify via Telegram immediately
+        if (!this.hasActiveClients() && isTelegramConfigured()) {
+          notifyTaskComplete(
+            task.title,
+            task.speechSummary || task.progressMessage || "Task completed successfully.",
+            task.durationMs
+          ).catch((e) => console.warn("[ParallelTask] Telegram notify error:", e));
+        }
       } catch (err: any) {
         console.error(`Parallel task ${taskId} error:`, err);
         task.status = "failed";
@@ -323,6 +394,15 @@ class ParallelTaskManager {
           },
           options.clientWs
         );
+
+        // If user is away, send failure notice via Telegram
+        if (!this.hasActiveClients() && isTelegramConfigured()) {
+          notifyProactiveAlert(
+            `❌ Task Failed: ${task.title.slice(0, 40)}`,
+            `Error details: ${task.error}`,
+            "high"
+          ).catch((e) => console.warn("[ParallelTask] Telegram alert error:", e));
+        }
       }
     })();
 

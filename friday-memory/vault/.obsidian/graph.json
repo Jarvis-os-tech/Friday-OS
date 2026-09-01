@@ -1,0 +1,35 @@
+{
+  "collapse-filter": false,
+  "search": "",
+  "showTags": true,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "colorGroups": [
+    {
+      "query": "path:conversations",
+      "color": {"a":1,"rgb":3847423}
+    },
+    {
+      "query": "path:facts",
+      "color": {"a":1,"rgb":16753920}
+    },
+    {
+      "query": "path:knowledge",
+      "color": {"a":1,"rgb":4962650}
+    },
+    {
+      "query": "path:execution",
+      "color": {"a":1,"rgb":11756543}
+    },
+    {
+      "query": "path:summaries",
+      "color": {"a":1,"rgb":15658734}
+    }
+  ],
+  "linkStrength": 1,
+  "linkDistance": 250,
+  "nodeSize": 1.2,
+  "lineSize": 1,
+  "repulsion": 300
+}

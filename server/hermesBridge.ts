@@ -6,6 +6,8 @@ import path from "path";
 /**
  * Hermes Bridge — the connection layer that lets FRIDAY delegate work to Hermes.
  *
+ * This version uses a single, default Hermes profile for all delegations.
+ *
  * Two communication paths:
  *   1. CLI delegation (primary): `hermes chat --query-file` — spawns Hermes headless
  *      for a single delegated task and returns the final text response. Robust,
@@ -19,6 +21,7 @@ import path from "path";
 const HERMES_BIN = process.env.HERMES_BIN || "hermes";
 const TIMEOUT_MS = Number(process.env.HERMES_TIMEOUT_MS) || 180_000;
 const MAX_TURNS = Number(process.env.HERMES_MAX_TURNS) || 12;
+// Default gateway URL for the single Hermes profile
 const GATEWAY_URL = process.env.HERMES_GATEWAY_URL || "127.0.0.1:9119";
 const OMH_TOOLSET_WARN = /Warning:\s*Unknown toolsets:\s*omh/i;
 
@@ -57,6 +60,8 @@ function cleanHermesOutput(raw: string): { text: string; sessionId?: string } {
   const kept: string[] = [];
   for (const line of lines) {
     if (OMH_TOOLSET_WARN.test(line)) continue;
+    if (line.includes("found but has no messages. Starting fresh")) continue;
+    if (line.includes("Loaded cached tools")) continue;
     const sid = line.match(/^\s*session_id:\s*(\S+)/i);
     if (sid) {
       sessionId = sid[1];
@@ -75,11 +80,17 @@ function cleanHermesOutput(raw: string): { text: string; sessionId?: string } {
  */
 export function execHermes(
   prompt: string,
-  opts?: { timeout?: number; maxTurns?: number; yolo?: boolean }
+  opts?: {
+    timeout?: number;
+    maxTurns?: number;
+    yolo?: boolean;
+    sessionName?: string;
+  }
 ): Promise<HermesResult> {
   const timeout = opts?.timeout ?? TIMEOUT_MS;
   const maxTurns = opts?.maxTurns ?? MAX_TURNS;
   const yolo = opts?.yolo !== false; // default true for autonomous delegation
+  const sessionName = opts?.sessionName || `friday-delegated-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const bin = getHermesBin();
 
   return new Promise<HermesResult>((resolve) => {
@@ -112,16 +123,20 @@ export function execHermes(
 
     try {
       fs.writeFileSync(tmpFile, prompt, "utf-8");
-      const args = [
+      const args: string[] = [];
+      // Always use the default profile
+      args.push("-p", "default");
+      args.push(
         "chat",
+        "--continue",
+        sessionName,
+        "--create-if-missing",
         "--query-file",
         tmpFile,
         "-Q", // quiet: only the final response + session id
-        "--source",
-        "tool", // tag as third-party integration, keep out of user session list
         "--max-turns",
-        String(maxTurns),
-      ];
+        String(maxTurns)
+      );
       if (yolo) args.push("--yolo"); // autonomous delegation: no approval prompts
 
       child = execFile(bin, args, {
@@ -167,8 +182,24 @@ export function execHermes(
   });
 }
 
-/** Reachability probe for a running `hermes serve` gateway (127.0.0.1:9119). */
-function probeGateway(url: string): Promise<{ reachable: boolean; error?: string }> {
+let cachedVersion: string | undefined;
+let lastVersionCheck = 0;
+
+/** Reachability probe for a running `hermes serve` or `hermes-gateway` service. */
+async function probeGateway(url: string): Promise<{ reachable: boolean; error?: string }> {
+  // Check systemd user service first
+  try {
+    const status = execFileSync("systemctl", ["--user", "is-active", "hermes-gateway.service"], {
+      encoding: "utf-8",
+      timeout: 2000,
+    }).trim();
+    if (status === "active") {
+      return { reachable: true };
+    }
+  } catch {
+    // Fall back to socket probe
+  }
+
   return new Promise((resolve) => {
     const [host, portStr] = url.split(":");
     const port = Number(portStr) || 9119;
@@ -176,8 +207,8 @@ function probeGateway(url: string): Promise<{ reachable: boolean; error?: string
     const timer = setTimeout(() => {
       sock.destroy();
       resolve({ reachable: false, error: "connection timed out" });
-    }, 2000);
-    sock.setTimeout(2000);
+    }, 1500);
+    sock.setTimeout(1500);
     sock.once("connect", () => {
       clearTimeout(timer);
       sock.destroy();
@@ -192,20 +223,32 @@ function probeGateway(url: string): Promise<{ reachable: boolean; error?: string
 
 export async function checkHermesHealth(): Promise<HermesHealth> {
   // 1. Can we even find the binary?
-  let version: string | undefined;
-  try {
-    const out = execFileSync(getHermesBin(), ["--version"], {
-      windowsHide: true,
-      timeout: 8000,
-      encoding: "utf-8",
-    });
-    version = out.trim().split("\n")[0]?.slice(0, 120);
-  } catch (e: any) {
-    return {
-      ok: false,
-      error: `Hermes binary not found or not runnable: ${(e?.message || String(e)).slice(0, 300)}`,
-      gateway: { url: GATEWAY_URL, reachable: false },
-    };
+  const now = Date.now();
+  if (!cachedVersion || now - lastVersionCheck > 300_000) {
+    try {
+      const out = execFileSync(getHermesBin(), ["--version"], {
+        windowsHide: true,
+        timeout: 20_000,
+        encoding: "utf-8",
+      });
+      cachedVersion = out.trim().split("\n")[0]?.slice(0, 120);
+      lastVersionCheck = now;
+    } catch (e: any) {
+      // If version call failed or timed out, try falling back to simple binary check
+      try {
+        const whichOut = execFileSync("which", [getHermesBin()], { encoding: "utf-8", timeout: 2000 });
+        if (whichOut.trim()) {
+          cachedVersion = "Hermes Agent (verified CLI)";
+          lastVersionCheck = now;
+        }
+      } catch {
+        return {
+          ok: false,
+          error: `Hermes binary not found or not runnable: ${(e?.message || String(e)).slice(0, 300)}`,
+          gateway: { url: GATEWAY_URL, reachable: false },
+        };
+      }
+    }
   }
 
   // 2. Is the live gateway up? (non-fatal — CLI delegation still works without it)
@@ -213,17 +256,13 @@ export async function checkHermesHealth(): Promise<HermesHealth> {
 
   return {
     ok: true,
-    version,
+    version: cachedVersion,
     gateway: { url: GATEWAY_URL, reachable: gateway.reachable, error: gateway.error },
   };
 }
 
 /** Vault path resolver — shared with obsidian skills. */
 export function getVaultPath(): string {
-  return (
-    process.env.OBSIDIAN_VAULT_PATH ||
-    process.env.VAULT_PATH ||
-    path.join(process.cwd(), "friday-memory")
-  );
+  // Always use the single friday-memory vault
+  return path.join(process.cwd(), "friday-memory");
 }
-

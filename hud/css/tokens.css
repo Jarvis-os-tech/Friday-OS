@@ -1,0 +1,83 @@
+/* ============================================================
+   J.A.R.V.I.S — DESIGN TOKENS
+   Single source of truth. Every visual decision resolves here.
+   Palette derived from Iron Man HUD film language:
+   monochrome cyan discipline + semantic amber/red alerts.
+   ============================================================ */
+
+:root {
+  /* ---- Color · Canvas ------------------------------------ */
+  --bg-void:        #050a14;              /* deep space navy, never #000 */
+  --bg-canvas:      #070d1a;
+  --bg-panel:       rgba(13, 21, 36, 0.55);
+  --bg-panel-solid: #0d1524;
+  --bg-inset:       rgba(3, 7, 15, 0.6);
+
+  /* ---- Color · Hologram spectrum -------------------------- */
+  --cyan:           #00d4ff;              /* primary — interactive, healthy */
+  --cyan-bright:    #7ceaff;
+  --cyan-deep:      #0090b8;
+  --cyan-dim:       rgba(0, 212, 255, 0.35);
+
+  --amber:          #ffb800;              /* warning / targeting / emphasis */
+  --amber-soft:     rgba(255, 184, 0, 0.14);
+
+  --red:            #ff4757;              /* critical only — scarce */
+  --green:          #26de81;              /* nominal status */
+
+  /* ---- Color · Structure & text --------------------------- */
+  --grid-line:      rgba(30, 58, 95, 0.45);
+  --border-faint:   rgba(0, 212, 255, 0.14);
+  --border-strong:  rgba(0, 212, 255, 0.38);
+
+  --text-hi:        #e8f0fe;
+  --text-mid:       #8ba3c7;
+  --text-low:       rgba(139, 163, 199, 0.55);
+
+  /* ---- Glow recipes (emission, not illumination) ---------- */
+  --glow-hover:     0 0 12px rgba(0, 212, 255, 0.25);
+  --glow-active:    0 0 20px rgba(0, 212, 255, 0.38), 0 0 4px rgba(0, 212, 255, 0.5);
+  --glow-halo:      0 0 10px rgba(0, 212, 255, 0.30),
+                    0 0 20px rgba(0, 212, 255, 0.20),
+                    0 0 40px rgba(0, 212, 255, 0.10);
+  --glow-text:      0 0 8px;
+  --glow-amber:     0 0 16px rgba(255, 184, 0, 0.35);
+  --glow-red:       0 0 18px rgba(255, 71, 87, 0.5);
+
+  /* ---- Typography ----------------------------------------- */
+  --font-display:   "Orbitron", sans-serif;        /* titles/logo only */
+  --font-ui:        "Rajdhani", sans-serif;        /* labels, nav, panels */
+  --font-body:      "Exo 2", sans-serif;           /* readable body text */
+  --font-mono:      "Share Tech Mono", monospace;  /* telemetry numerals */
+
+  --track-wide:     0.14em;
+  --track-mid:      0.08em;
+
+  /* ---- Spacing scale (4px base) ---------------------------- */
+  --sp-1: 4px;   --sp-2: 8px;   --sp-3: 12px;
+  --sp-4: 16px;  --sp-5: 24px;  --sp-6: 32px;
+  --sp-7: 48px;  --sp-8: 64px;
+
+  /* ---- Radii — circles over rectangles --------------------- */
+  --r-sm: 2px;
+  --r-md: 4px;
+  --r-full: 999px;
+
+  /* ---- Motion language ------------------------------------- */
+  --ease-out:       cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-inout:     cubic-bezier(0.65, 0, 0.35, 1);
+  --t-fast:         160ms;
+  --t-med:          320ms;
+  --t-slow:         700ms;
+  --t-breathe:      4.8s;                   /* idle breathing cycle */
+  --t-spin-slow:    26s;                    /* outer ring rotation */
+  --t-spin-rev:     38s;                    /* counter-rotation */
+  --t-sweep:        6s;                     /* radar sweep period */
+
+  /* ---- Z-layers -------------------------------------------- */
+  --z-underlay: 0;
+  --z-panels:   10;
+  --z-orb:      20;
+  --z-overlay:  90;
+  --z-boot:     100;
+}

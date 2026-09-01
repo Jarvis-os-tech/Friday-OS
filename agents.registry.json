@@ -1,0 +1,335 @@
+{
+  "version": "1.0.0",
+  "name": "Friday-OS Master Registry",
+  "description": "Ground-truth inventory of verified Agents, Skills, and Native Tools in Friday OS",
+  "updatedAt": "2026-08-31T23:35:00.000Z",
+
+  "agents": {
+    "friday-prime": {
+      "id": "friday-prime",
+      "name": "F.R.I.D.A.Y. Prime",
+      "role": "Core Orchestrator & Live Voice Assistant",
+      "description": "Primary real-time speech-to-speech, vision, and intent routing agent powered by Gemini 3.1 Flash Live and Gemini 3.7 Flash.",
+      "platform": "gemini-live",
+      "model": "gemini-3.1-flash-live-preview",
+      "status": "online",
+      "capabilities": ["speech-to-speech", "multimodal-vision", "tool-calling", "task-routing", "proactive-heartbeat"]
+    },
+    "prime-agent": {
+      "id": "prime-agent",
+      "name": "Prime Agent",
+      "role": "Primary Autonomous Software Engineer & Coding Agent",
+      "description": "Dedicated coding agent (PrimeIntellect-ai/prime-agent). Specializes in software engineering, refactoring, building projects, writing code, and debugging.",
+      "platform": "prime-agent",
+      "bridge": "server/primeBridge.ts",
+      "path": "/home/gopi/.nvm/versions/node/v24.19.0/bin/prime-agent",
+      "status": "ready",
+      "capabilities": ["fullstack-coding", "refactoring", "debugging", "ast-analysis", "code-generation"]
+    },
+    "hermes": {
+      "id": "hermes",
+      "name": "Hermes Intelligence Agent",
+      "role": "Autonomous Research & Personal Knowledge Sub-Agent",
+      "description": "Delegated sub-agent for autonomous web research, Obsidian vault queries, file operations, and general problem solving via Hermes CLI.",
+      "platform": "hermes",
+      "bridge": "server/hermesBridge.ts",
+      "vaultDirectory": "friday-memory/",
+      "status": "ready",
+      "capabilities": ["web-research", "vault-queries", "source-grounding", "autonomous-cli"]
+    },
+    "ultron": {
+      "id": "ultron",
+      "name": "Ultron OS Diagnostics & Boost Engine",
+      "role": "Linux Kernel Health & Hardware Optimizer",
+      "description": "Diagnostic daemon for Linux OS health audits, CPU thermal monitoring, memory optimization, and sound server auto-healing.",
+      "platform": "ultron",
+      "bridge": "server/ultronBridge.ts",
+      "status": "ready",
+      "capabilities": ["system-diagnostics", "thermal-monitoring", "process-cleanup", "hardware-telemetry"]
+    }
+  },
+
+  "skills": {
+    "get_weather_forecast": {
+      "name": "get_weather_forecast",
+      "displayName": "Live Weather & Forecast",
+      "category": "Weather",
+      "description": "Fetches current real-time meteorological conditions, temperature, humidity, wind, and 3-day forecast via Open-Meteo API.",
+      "parameters": {
+        "location": { "type": "string", "description": "City or location name" },
+        "forecast_days": { "type": "number", "description": "Number of forecast days (1 to 7)" }
+      },
+      "executionMode": "async-parallel",
+      "source": "server/skills.ts"
+    },
+    "get_news_headlines": {
+      "name": "get_news_headlines",
+      "displayName": "Live News Feed",
+      "category": "News",
+      "description": "Pulls latest curated breaking headlines from Google News RSS feeds across world, technology, business, science, or custom queries.",
+      "parameters": {
+        "category": { "type": "string", "description": "News category: world, technology, business, science, sports, entertainment, health" },
+        "query": { "type": "string", "description": "Specific search keyword query" },
+        "limit": { "type": "number", "description": "Number of articles to return (default 5)" }
+      },
+      "executionMode": "async-parallel",
+      "source": "server/skills.ts"
+    },
+    "manage_reminders": {
+      "name": "manage_reminders",
+      "displayName": "Task & Reminder Manager",
+      "category": "Productivity",
+      "description": "Creates, lists, completes, or clears scheduled reminders. Monitored by the 24/7 proactive heartbeat.",
+      "parameters": {
+        "action": { "type": "string", "enum": ["create", "list", "complete", "clear"], "description": "Operation to perform" },
+        "text": { "type": "string", "description": "Reminder description" },
+        "due_in_minutes": { "type": "number", "description": "Minutes from now when reminder should trigger" },
+        "due_date": { "type": "string", "description": "Target date string" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "calculate_or_convert": {
+      "name": "calculate_or_convert",
+      "displayName": "Math & Unit Converter",
+      "category": "Utility",
+      "description": "Evaluates complex mathematical expressions and physical unit conversions.",
+      "parameters": {
+        "expression": { "type": "string", "description": "Mathematical expression or conversion string" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "get_personal_agenda": {
+      "name": "get_personal_agenda",
+      "displayName": "Daily Personal Agenda & Priorities",
+      "category": "Productivity",
+      "description": "Retrieves today's personal agenda, due reminders, active multi-agent workflows, and proactive next-step recommendations.",
+      "parameters": {},
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "manage_daily_schedule": {
+      "name": "manage_daily_schedule",
+      "displayName": "Daily Schedule Manager",
+      "category": "Productivity",
+      "description": "Creates, lists, completes, or clears scheduled milestones and priority items on the daily personal agenda.",
+      "parameters": {
+        "action": { "type": "string", "enum": ["create", "list", "complete", "clear"], "description": "Action to perform" },
+        "title": { "type": "string", "description": "Milestone title" },
+        "time": { "type": "string", "description": "Target time" },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"], "description": "Task priority" },
+        "assigned_agent": { "type": "string", "description": "Target specialist agent" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "delegate_task": {
+      "name": "delegate_task",
+      "displayName": "Universal Multi-Agent Delegation",
+      "category": "Productivity",
+      "description": "Intelligently delegates tasks to the specialist agent best suited: Prime Agent (coding/testing), Hermes (research/vault), or Ultron (system/optimization).",
+      "parameters": {
+        "task": { "type": "string", "description": "Detailed task description" },
+        "target_agent": { "type": "string", "description": "Optional explicit target agent" },
+        "profile": { "type": "string", "description": "Optional Hermes department profile" }
+      },
+      "executionMode": "async-parallel",
+      "source": "server/skills.ts"
+    },
+    "delegate_to_prime_agent": {
+      "name": "delegate_to_prime_agent",
+      "displayName": "Prime Coding Agent Delegation",
+      "category": "Productivity",
+      "description": "Dispatches intensive coding, software engineering, debugging, and refactoring tasks to Prime Agent.",
+      "parameters": {
+        "prompt": { "type": "string", "description": "Code task specification" },
+        "context": { "type": "string", "description": "Optional file paths or context snippets" }
+      },
+      "executionMode": "async-parallel",
+      "source": "server/skills.ts"
+    },
+    "delegate_to_hermes": {
+      "name": "delegate_to_hermes",
+      "displayName": "Hermes Sub-Agent Delegation",
+      "category": "Productivity",
+      "description": "Delegates multi-turn autonomous web research, notes synthesis, or file exploration to Hermes CLI.",
+      "parameters": {
+        "prompt": { "type": "string", "description": "The complete prompt for Hermes" },
+        "max_turns": { "type": "number", "description": "Max execution turns (default 12)" }
+      },
+      "executionMode": "async-parallel",
+      "source": "server/skills.ts"
+    },
+    "delegate_to_ultron": {
+      "name": "delegate_to_ultron",
+      "displayName": "Ultron System Diagnostic & Boost",
+      "category": "System",
+      "description": "Engages Ultron for deep Linux OS health audits, performance tuning, and hardware diagnostic analysis.",
+      "parameters": {
+        "action": { "type": "string", "enum": ["deep_audit", "boost_performance", "check_thermals", "clean_memory"], "description": "Ultron action" }
+      },
+      "executionMode": "async-parallel",
+      "source": "server/skills.ts"
+    },
+    "get_system_info": {
+      "name": "get_system_info",
+      "displayName": "Hardware & OS Telemetry",
+      "category": "System",
+      "description": "Retrieves ground-truth system telemetry (CPU usage %, RAM, disk space, battery status, thermals, uptime).",
+      "parameters": {
+        "detail_level": { "type": "string", "enum": ["summary", "full", "hardware", "network", "battery"], "description": "Detail depth" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "control_system": {
+      "name": "control_system",
+      "displayName": "System Hardware Control",
+      "category": "System",
+      "description": "Adjusts master audio volume, display brightness, power management profiles, or executes power states.",
+      "parameters": {
+        "action": { "type": "string", "enum": ["set_volume", "mute", "unmute", "set_brightness", "set_power_profile", "lock_screen"], "description": "Control action" },
+        "value": { "type": "number", "description": "Target numeric value (0-100 for volume/brightness)" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "launch_application": {
+      "name": "launch_application",
+      "displayName": "Application Launcher",
+      "category": "System",
+      "description": "Launches desktop applications, terminals, browsers, IDEs, or media tools on the Linux host.",
+      "parameters": {
+        "app_name": { "type": "string", "description": "Name or binary of the application to launch" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "manage_system_process": {
+      "name": "manage_system_process",
+      "displayName": "Process Manager",
+      "category": "System",
+      "description": "Lists top running processes by CPU/Memory consumption, or terminates runaway tasks.",
+      "parameters": {
+        "action": { "type": "string", "enum": ["list_top", "kill", "find"], "description": "Process management action" },
+        "pid": { "type": "number", "description": "Process ID to terminate" },
+        "process_name": { "type": "string", "description": "Process name filter" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "obsidian_search": {
+      "name": "obsidian_search",
+      "displayName": "Obsidian Vault Search",
+      "category": "Productivity",
+      "description": "Searches Markdown notes, diary entries, research logs, and facts in the personal Obsidian vault (`friday-memory/`).",
+      "parameters": {
+        "query": { "type": "string", "description": "Search keyword or phrase" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "obsidian_read": {
+      "name": "obsidian_read",
+      "displayName": "Obsidian Note Reader",
+      "category": "Productivity",
+      "description": "Reads the Markdown content and frontmatter of a specific note from the vault.",
+      "parameters": {
+        "path": { "type": "string", "description": "Relative file path within the vault" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "obsidian_create": {
+      "name": "obsidian_create",
+      "displayName": "Obsidian Note Creator",
+      "category": "Productivity",
+      "description": "Creates a new Markdown note in the user's sovereign Obsidian vault with metadata frontmatter.",
+      "parameters": {
+        "title": { "type": "string", "description": "Note title / filename" },
+        "content": { "type": "string", "description": "Markdown body content" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    },
+    "obsidian_append": {
+      "name": "obsidian_append",
+      "displayName": "Obsidian Note Appender",
+      "category": "Productivity",
+      "description": "Appends timestamped notes, research findings, or task logs to an existing Markdown note.",
+      "parameters": {
+        "path": { "type": "string", "description": "Target note path" },
+        "content": { "type": "string", "description": "Content to append" }
+      },
+      "executionMode": "sync",
+      "source": "server/skills.ts"
+    }
+  },
+
+  "tools": {
+    "cpp_workers": {
+      "category": "Native C++ Hardware Workers",
+      "binDirectory": "workers_cpp/bin",
+      "totalWorkers": 18,
+      "items": {
+        "sys_telemetry": { "binary": "sys_telemetry", "description": "Sub-millisecond CPU %, RAM, and load average extractor" },
+        "thermal_scan": { "binary": "thermal_scan", "description": "Linux thermal zone sensor scanner" },
+        "hardware_ctrl": { "binary": "hardware_ctrl", "description": "ALSA audio volume and screen backlight controller" },
+        "pc_spec": { "binary": "pc_spec", "description": "Hardware motherboard, GPU, CPU, and RAM spec analyzer" },
+        "process_ctrl": { "binary": "process_ctrl", "description": "Process inspection, top consumers, and signal manager" },
+        "service_ctrl": { "binary": "service_ctrl", "description": "systemd daemon and background service controller" },
+        "storage_scan": { "binary": "storage_scan", "description": "Partition mount and storage health scanner" },
+        "net_inspector": { "binary": "net_inspector", "description": "Active socket connections, bandwidth, and interface status" },
+        "wifi_scan": { "binary": "wifi_scan", "description": "Wireless network scanner and signal strength analyzer" },
+        "firewall_audit": { "binary": "firewall_audit", "description": "iptables/ufw rule auditor and port listener scanner" },
+        "desktop_control": { "binary": "desktop_control", "description": "X11/Wayland mouse, keyboard, and window automation" },
+        "desktop_ctrl": { "binary": "desktop_ctrl", "description": "Fast window focus and desktop workspace switcher" },
+        "file_search": { "binary": "file_search", "description": "Multi-threaded filesystem crawler" },
+        "open_app": { "binary": "open_app", "description": "Desktop application launcher via XDG desktop entries" },
+        "media_ctrl": { "binary": "media_ctrl", "description": "MPRIS media player playback controller" },
+        "memory_tester": { "binary": "memory_tester", "description": "RAM bandwidth and memory cache benchmark tool" },
+        "vision_ctrl": { "binary": "vision_ctrl", "description": "V4L2 camera device capture and display manager" },
+        "jarvis_sysctl": { "binary": "jarvis_sysctl", "description": "Low-level Linux kernel parameter tuner" }
+      }
+    },
+    "audio_gateway": {
+      "category": "Native Rust Audio Engine",
+      "binary": "gateway_rust/target/release/jarvis-gateway",
+      "description": "Zero-GC microsecond-latency audio engine. Captures 16kHz microphone PCM and plays 24kHz speaker PCM over Unix Domain Sockets without a browser.",
+      "socketPath": "/tmp/jarvis_audio.sock",
+      "status": "compiled"
+    },
+    "memory_engine": {
+      "category": "Universal Rust Memory Engine",
+      "binary": "memory_engine/target/release/jarvis-memory-engine",
+      "description": "Axum REST & WebSocket memory server with SQLite WAL (11 tables), FTS5 full-text search, and knowledge graph traversal.",
+      "port": 50051,
+      "status": "compiled"
+    },
+    "telegram_notifier": {
+      "category": "Proactive Notification Channel",
+      "source": "server/telegramNotifier.ts",
+      "description": "Direct Telegram Bot API client for alerting the user on mobile when away from the browser.",
+      "status": "active"
+    },
+    "telegram_bot": {
+      "category": "Inbound Telegram Command Handler",
+      "source": "server/telegramBot.ts",
+      "description": "Long-polling Telegram bot enabling control (/status, /task, /remind, chat) directly from mobile.",
+      "status": "active"
+    },
+    "heartbeat_engine": {
+      "category": "24/7 Autonomous Pulse",
+      "source": "server/heartbeat.ts",
+      "description": "Background tick scheduler monitoring due reminders, battery drops, thermal spikes, and completed background tasks.",
+      "status": "active"
+    },
+    "capability_forge": {
+      "category": "Dynamic Tool Synthesis Sandbox",
+      "source": "core_engine/forge_sandbox.py",
+      "description": "Bubblewrap (bwrap) sandboxed virtual environment for dynamically creating, compiling, and testing custom Python tools on the fly.",
+      "status": "active"
+    }
+  }
+}

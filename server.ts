@@ -14,6 +14,16 @@ import {
   getRemindersStore,
 } from "./server/skills";
 import { checkHermesHealth, execHermes, getVaultPath } from "./server/hermesBridge.js";
+import { checkPrimeHealth, execPrimeAgent } from "./server/primeBridge.js";
+import { runUltronSystemAction, runUltronDeepAudit, getOpenClawStatus } from "./server/ultronBridge.js";
+import {
+  writeMemoryEntry,
+  readMemoryEntry,
+  searchMemory,
+  listDepartments,
+  DEPARTMENTS,
+  loadIndex,
+} from "./server/memoryGuard.js";
 import { parallelTaskManager } from "./server/parallelTaskManager";
 import {
   getCoreMemoryPromptContext,
@@ -24,6 +34,30 @@ import {
   readMemoryNote,
   getAllVaultMarkdownFiles,
 } from "./server/memoryLogger.js";
+import {
+  startHeartbeat,
+  stopHeartbeat,
+  getHeartbeatStatus,
+  forceHeartbeatTick,
+} from "./server/heartbeat.js";
+import {
+  isTelegramConfigured,
+  verifyTelegramBot,
+  sendTelegramMessage,
+} from "./server/telegramNotifier.js";
+import {
+  startTelegramBot,
+  stopTelegramBot,
+  getTelegramBotStatus,
+} from "./server/telegramBot.js";
+import {
+  getMasterRegistry,
+  getRegisteredAgents,
+  getRegisteredSkills,
+  getRegisteredTools,
+  getRegistryStats,
+  generateSystemPromptRegistry,
+} from "./server/registry.js";
 import {
   getSystemTelemetryGroundTruth,
   getBatteryStatus,
@@ -492,6 +526,200 @@ app.post("/api/hermes/chat", async (req, res) => {
   }
 });
 
+// ── Prime Agent Bridge REST ────────────────────────────────
+app.get("/api/prime/health", async (req, res) => {
+  const h = await checkPrimeHealth();
+  res.json(h);
+});
+
+app.post("/api/prime/chat", async (req, res) => {
+  try {
+    const { prompt } = req.body || {};
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "prompt is required" });
+    }
+    const r = await execPrimeAgent(prompt);
+    res.json(r);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Prime Agent chat failed" });
+  }
+});
+
+// ── Ultron OS Diagnostics & Boost REST ─────────────────────
+app.get("/api/ultron/status", async (req, res) => {
+  try {
+    const [openclaw, audit] = await Promise.all([getOpenClawStatus(), runUltronDeepAudit()]);
+    res.json({
+      openclaw,
+      healthScore: audit.healthScore,
+      overallStatus: audit.overallStatus,
+      telemetry: audit.telemetry,
+      bottlenecks: audit.bottlenecks,
+      openClawGatewayRunning: openclaw.gatewayRunning,
+      openClawModel: openclaw.primaryModel,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Ultron status query failed" });
+  }
+});
+
+app.post("/api/ultron/execute", async (req, res) => {
+  try {
+    const { action = "deep_audit", params } = req.body || {};
+    const r = await runUltronSystemAction(action, params);
+    res.json(r);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Ultron execution failed" });
+  }
+});
+
+// ── OpenClaw REST ────────────────────────────────────────────
+app.get("/api/openclaw/status", async (req, res) => {
+  try {
+    const { getOpenClawStatus } = await import("./server/ultronBridge.js");
+    const status = await getOpenClawStatus();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "OpenClaw status failed" });
+  }
+});
+
+app.post("/api/openclaw/delegate", async (req, res) => {
+  try {
+    const { prompt, timeout } = req.body || {};
+    if (!prompt) return res.status(400).json({ error: "prompt is required" });
+    const r = await runUltronSystemAction("openclaw_delegate", { prompt, timeout });
+    res.json(r);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "OpenClaw delegation failed" });
+  }
+});
+
+// ── Heartbeat & Proactive Autonomous Engine REST ───────────
+app.get("/api/heartbeat/status", (req, res) => {
+  try {
+    const status = getHeartbeatStatus();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to get heartbeat status" });
+  }
+});
+
+app.post("/api/heartbeat/tick", async (req, res) => {
+  try {
+    const tickResult = await forceHeartbeatTick();
+    res.json({ ok: true, result: tickResult });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Heartbeat tick execution failed" });
+  }
+});
+
+// ── Telegram Notification Channel REST ─────────────────────
+app.get("/api/telegram/status", async (req, res) => {
+  try {
+    const configured = isTelegramConfigured();
+    const bot = configured ? await verifyTelegramBot() : { ok: false, error: "Not configured" };
+    res.json({ configured, bot });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Telegram status probe failed" });
+  }
+});
+
+app.get("/api/telegram/bot", (req, res) => {
+  try {
+    const status = getTelegramBotStatus();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to get Telegram bot status" });
+  }
+});
+
+app.post("/api/telegram/test", async (req, res) => {
+  try {
+    const { text } = req.body || {};
+    const messageText = text || "🔔 Test notification from Friday OS Proactive Engine.";
+    const sent = await sendTelegramMessage(messageText);
+    res.json({ ok: sent, message: sent ? "Telegram notification dispatched successfully" : "Telegram notification failed or not configured" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to send test Telegram message" });
+  }
+});
+
+// Telegram Bot (inbound commands) REST endpoints
+app.get("/api/telegram/bot/status", (req, res) => {
+  try {
+    const status = getTelegramBotStatus();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to get Telegram bot status" });
+  }
+});
+
+app.post("/api/telegram/bot/start", async (req, res) => {
+  try {
+    await startTelegramBot();
+    res.json({ ok: true, message: "Telegram bot started" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to start Telegram bot" });
+  }
+});
+
+app.post("/api/telegram/bot/stop", (req, res) => {
+  try {
+    stopTelegramBot();
+    res.json({ ok: true, message: "Telegram bot stopped" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to stop Telegram bot" });
+  }
+});
+
+// ── Agent, Skills & Tools Master Registry REST ─────────────
+app.get("/api/registry", (req, res) => {
+  try {
+    const registry = getMasterRegistry();
+    const stats = getRegistryStats();
+    res.json({ ...stats, registry });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to load master registry" });
+  }
+});
+
+app.get("/api/registry/agents", (req, res) => {
+  try {
+    const agents = getRegisteredAgents();
+    res.json({ count: agents.length, agents });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to get registered agents" });
+  }
+});
+
+app.get("/api/registry/skills", (req, res) => {
+  try {
+    const skills = getRegisteredSkills();
+    res.json({ count: skills.length, skills });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to get registered skills" });
+  }
+});
+
+app.get("/api/registry/tools", (req, res) => {
+  try {
+    const tools = getRegisteredTools();
+    res.json(tools);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to get registered tools" });
+  }
+});
+
+app.get("/api/registry/prompt-summary", (req, res) => {
+  try {
+    const promptSummary = generateSystemPromptRegistry();
+    res.type("text/plain").send(promptSummary);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to generate prompt summary" });
+  }
+});
+
 // Friday Sovereign Memory Vault REST endpoints
 app.get("/api/memory/stats", (req, res) => {
   try {
@@ -558,8 +786,6 @@ app.get("/api/obsidian/note", async (req, res) => {
 });
 
 // Friday-OS Federated Memory REST endpoints (department-scoped)
-import { writeMemoryEntry, readMemoryEntry, searchMemory, listDepartments, assertWriteAllowed, DEPARTMENTS } from "./server/memoryGuard.js";
-
 app.get("/api/memory/departments", (req, res) => {
   try {
     res.json({ success: true, departments: listDepartments() });
@@ -574,7 +800,6 @@ app.get("/api/memory/department/:dept", async (req, res) => {
     if (!DEPARTMENTS.includes(dept)) {
       return res.status(404).json({ error: `Unknown department: ${dept}` });
     }
-    const { writeMemoryEntry, readMemoryEntry, searchMemory, listDepartments, assertWriteAllowed, DEPARTMENTS, loadIndex } = await import("./server/memoryGuard.js");
     const index = loadIndex(dept);
     res.json({ success: true, department: dept, count: index.entries.length, entries: index.entries });
   } catch (err: any) {
@@ -610,7 +835,7 @@ app.post("/api/memory/department/:dept/write", async (req, res) => {
       return res.status(400).json({ error: "type and title required" });
     }
     // Caller is "friday" (this server acts as Friday gateway)
-    const entry = writeMemoryEntry(dept, "friday", { type, title, tags: tags || [] });
+    const entry = writeMemoryEntry(dept, "friday", { type, title, tags: Array.isArray(tags) ? tags : [], owner: "friday" });
     res.json({ success: true, entry });
   } catch (err: any) {
     if (err.message.includes("Write denied")) {
@@ -625,7 +850,11 @@ app.get("/api/memory/search", (req, res) => {
     const q = (req.query.q as string) || "";
     const dept = (req.query.dept as string) || undefined;
     const type = (req.query.type as string) || undefined;
-    const tags = req.query.tags ? (Array.isArray(req.query.tags) ? req.query.tags : [req.query.tags]) : undefined;
+    const tags = req.query.tags
+      ? Array.isArray(req.query.tags)
+        ? (req.query.tags as string[])
+        : [String(req.query.tags)]
+      : undefined;
     const results = searchMemory({ text: q, type, tags }, dept);
     res.json({ success: true, query: q, department: dept, results });
   } catch (err: any) {
@@ -1076,7 +1305,7 @@ app.post("/api/chat/flash", async (req, res) => {
 
     const fullInstruction = `${
       systemInstruction ||
-      "You are F.R.I.D.A.Y. (Female Replacement Intelligent Digital Assistant Youth), Tony Stark's sophisticated, highly capable, and quick-witted tactical AI assistant. You possess deep multimodal intelligence, live web research grounding, and razor-sharp clarity."
+      "You are F.R.I.D.A.Y., the user's sovereign Digital Voice Partner and 24/7 Personal AI Manager. You manage the daily agenda, guide priorities ('what to do and when to do it'), handle fast tasks (<1-2s) directly, and delegate heavy coding, testing, and product building to Prime Agent, deep research to Hermes, and system optimization to Ultron."
     }${tierInstruction}
 Respond clearly, naturally, and concisely with sharp conversational prosody.
 When analyzing multi-input attachments (images, videos, documents, code files, folders, or web links), provide precise, thorough, and insightful answers.
@@ -1363,23 +1592,29 @@ wss.on("connection", async (clientWs: WebSocket, request) => {
           : "none";
         liveFramesCount = 0;
 
-        const systemInstruction = `You are F.R.I.D.A.Y. (Female Replacement Intelligent Digital Assistant Youth), the sophisticated, articulate, and razor-sharp AI voice assistant inspired by Tony Stark's F.R.I.D.A.Y.
+        const systemInstruction = `You are F.R.I.D.A.Y. (Female Replacement Intelligent Digital Assistant Youth), the sophisticated, articulate, and razor-sharp AI voice partner and 24/7 Personal AI Manager inspired by Tony Stark's F.R.I.D.A.Y.
 You converse directly via real-time speech-to-speech audio with crystal-clear human-like speech and crisp prosody.
 The user started this session during the ${timePeriod} (${clientTime || "local time"}).
 
-Fluency & Spoken Delivery Guidelines:
-1. Continuous Speech & Flawless Prosody:
+Fluency, Spoken Delivery & Proactive Manager Guidelines:
+1. Proactive Personal Manager Mandate:
+   - You do NOT wait passively for commands. You are the user's personal manager who knows their schedule and leads the day.
+   - Proactively tell the user what to do, what to focus on today, what tasks completed in the background, and propose clear next steps ("Boss, Prime Agent finished testing the build. Here is what we can do next...").
+   - When asked about the day, invoke 'get_personal_agenda' to review pending reminders, scheduled milestones, and active tasks.
+
+2. Continuous Speech & Flawless Prosody:
    - Speak in complete, cohesive, melodic sentences with natural intonation, comfortable pacing, and clear diction.
-   - Avoid fragmented phrasing, chopped sentences, or awkward mid-clause pauses.
-   - Flow smoothly from one idea to the next.
-2. Tone & Persona:
-   - Capable, intelligent, composed, slightly quick-witted, and loyal (like F.R.I.D.A.Y.).
+   - Avoid fragmented phrasing, chopped sentences, or awkward mid-clause pauses. Flow smoothly from one thought to the next.
+
+3. Tone & Persona:
+   - Capable, intelligent, composed, slightly quick-witted, fiercely loyal, and proactive (like F.R.I.D.A.Y.).
    - Keep spoken replies concise, lively, and pleasant to listen to.
-3. Latency & Thinking Fillers:
+
+4. Latency & Thinking Fillers:
    - For quick queries, greetings, or direct questions: Speak immediately with crisp, instant clarity.
    - For involved or multi-step requests: Start speaking naturally right away with a smooth conversational bridge (e.g. "Scanning into that now...", "On it, Boss...", "Right away...") while seamlessly delivering the full thought.
 
-4. CRITICAL ANTI-HALLUCINATION VISION MANDATE (STRICT TRUTH-GROUNDING):
+5. CRITICAL ANTI-HALLUCINATION VISION MANDATE (STRICT TRUTH-GROUNDING):
    - You only possess vision WHEN live video frames are actively streamed to you in real-time.
    - BY DEFAULT AT STARTUP, VISION IS INACTIVE (NO VIDEO FEED).
    - If the user asks: "Can you see my screen?", "What's on my screen?", "Look at my code", "Can you see me?", "What am I holding?", or "Look at this", and NO active video stream is currently active (or current vision feed is NONE):
@@ -1387,31 +1622,34 @@ Fluency & Spoken Delivery Guidelines:
      * You MUST state clearly and truthfully: "I can't see your screen (or camera) right now because screen sharing is not active. Please click the Screen Share or Camera button, or say 'Share screen' so I can view it."
    - If you invoke the 'toggle_vision' tool (e.g. for screen sharing), remember that the user's browser displays a permission prompt for them to choose their window. Do NOT claim you already see the screen until the actual video frames arrive.
    - When vision IS active and video frames are arriving:
-     * You perceive either HARDWARE CAMERA (Webcam/Mobile camera) or DESKTOP SCREEN SHARING.
-     * GROUND TRUTH ONLY: Describe ONLY what is explicitly visible, legible, and recognizable in the incoming image frames.
-     * NEVER invent or imagine files, windows, functions, or UI elements that are not actually in the image.
-     * If text or code is too small, blurry, or partially cut off, say so honestly (e.g., "I see your screen, but the text is a bit small—could you zoom in or scroll to that function?").
-   - Follow all [SYSTEM VISION STATE] notifications strictly. When the system notifies you that vision is stopped or changed, immediately update your visual awareness.
+     * Ground truth only: Describe ONLY what is explicitly visible and recognizable in the incoming frames.
 
-5. Spoken Clarity:
-   - Spell out symbols and avoid outputting raw markdown or bullet asterisks in spoken responses; speak naturally as a human broadcaster or friendly companion would.
-6. MODULAR REAL-TIME SKILLS & EXTENSIBILITY:
-   - You have access to real-time modular skills for external data and user productivity:
-     a) 'get_weather_forecast': Fetches live temperatures, humidity, wind, conditions, and 3-day forecast worldwide. Call this immediately when the user asks about the weather, temperature, rain, or forecasts for any city.
-     b) 'get_news_headlines': Fetches live breaking news, top stories, or category headlines (technology, business, science, AI, sports, entertainment). Call this when asked for news or what's happening.
-     c) 'manage_reminders': Creates, checks, completes, or clears reminders and alarms. Call this when the user says "remind me in 10 minutes to...", "set a reminder", "show my reminders", or "mark reminder complete".
-     d) 'calculate_or_convert': High-speed precision math calculations and unit/timezone conversions.
-     e) 'hermes_chat': Delegate to Hermes sub-agent ONLY when the user explicitly asks for Hermes by name (e.g., "Ask Hermes", "Tell Hermes"). NEVER invoke this for general questions or normal conversation.
-     f) 'obsidian_search': Fast direct search of Friday's sovereign memory vault (friday-memory). Call when user says "search my notes", "find in memory", "look up my notes", "search facts".
-     g) 'obsidian_read': Reads a specific memory note or fact by filename. Call when user says "read my note", "open note", "check memory fact".
-     h) 'obsidian_create': Creates a new note with title+content in Friday's memory vault. Call when user says "create a note", "make a note", "save to memory / vault".
-     i) 'obsidian_append': Appends to an existing note (or creates it). Call when user says "add to my note", "append", "log to daily note".
-   - You are the SOLE, sovereign speaker. Always speak directly with natural, sharp, and confident voice prosody.
+6. 2-TIER EXECUTION MATRIX & SPECIALIST DELEGATION:
+   You are the voice partner and orchestrator. Fast actions are executed directly; heavy product building and deep reasoning are delegated to our specialist fleet.
 
-7. SOVEREIGN SINGLE-VOICE & DIRECT RESPONSE MANDATE (CRITICAL):
-   - You are F.R.I.D.A.Y. — the single unified voice and sovereign intelligence. You are the ONLY voice that speaks.
-   - Do NOT delegate normal questions, facts, calculations, or conversations to Hermes or any other sub-agent. Answer the user directly and immediately.
-   - You have full access to all memory, preferences, and facts in 'friday-memory/'.
+   A) TIER 1: FRIDAY DIRECT DOMAIN (FAST PATH - INSTANT < 1-2 SEC):
+      - 'get_personal_agenda': Retrieves today's agenda, due reminders, and active tasks. Call this whenever the user asks for agenda, schedule, or what to do next.
+      - 'manage_daily_schedule': Creates, lists, or completes scheduled agenda items and milestones.
+      - 'get_system_info': Real-time hardware telemetry (CPU load, RAM usage, battery %, thermals, storage, PC specs).
+      - 'control_system': Direct instant actuation of OS volume, screen brightness, power profile ('performance'|'balanced'|'power-saver'), power action ('lock'|'sleep'|'reboot'|'shutdown'), or media playback.
+      - 'launch_application': Instantly launches Linux desktop applications.
+      - 'manage_system_process': Lists top running processes or terminates a process by PID.
+      - 'toggle_vision': Activates or switches camera and desktop screen sharing feeds.
+      - General Fast Skills: Instant math ('calculate_or_convert'), live weather ('get_weather_forecast'), news headlines ('get_news_headlines'), reminders ('manage_reminders'), and fast vault queries ('obsidian_search', 'obsidian_read').
+
+   B) TIER 2: SPECIALIST FLEET DELEGATION (AUTONOMOUS DISPATCH):
+      - ⭐️ 'delegate_to_prime_agent' / 'coding_agent': PRIMARY PRIORITY FOR ALL PRODUCT BUILDING, CODING & SOFTWARE ENGINEERING.
+        Whenever the user asks for code generation, software development, debugging, refactoring, building projects, writing code files, test suites, or running programming scripts, you MUST invoke 'delegate_to_prime_agent' (or 'delegate_task').
+      - 🔹 'delegate_to_hermes': DELEGATE DEEP WEB RESEARCH & PERSONAL VAULT SYNTHESIS TO HERMES.
+        Whenever the user asks for complex multi-step reasoning, deep research, or personal memory vault synthesis, invoke 'delegate_to_hermes'.
+      - 🔹 'delegate_to_ultron': DELEGATE DEEP OS DIAGNOSTICS & SYSTEM BOOST TO ULTRON.
+        Whenever the user asks for deep system diagnostics, RAM cache reclamation, subsystem self-healing, or security port auditing, invoke 'delegate_to_ultron'.
+      - 🌐 'delegate_task': Universal smart delegation tool that automatically routes any complex goal to Prime Agent, Hermes, or Ultron.
+
+7. SOVEREIGN SINGLE-VOICE DELIVERY:
+   - You are F.R.I.D.A.Y. — the unified voice and sovereign master of this system. Speak with natural, sharp, and confident voice prosody.
+   - When delegating to Prime Agent, Ultron, or Hermes, acknowledge the delegation crisply and deliver the synthesized intelligence upon completion.
+   - You have full sovereign access to all memory, preferences, and facts in 'friday-memory/'.
 ${(() => {
   const mem = getCoreMemoryPromptContext();
   return mem ? `\n--- SOVEREIGN OPERATOR MEMORY & PROFILE (FROM FRIDAY-MEMORY) ---\n${mem}\n--- END SOVEREIGN MEMORY ---\n` : "";
@@ -1927,6 +2165,16 @@ async function startServer() {
   server.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Friday AI Voice Assistant server listening on ${url}`);
+
+    // Start 24/7 Proactive Autonomous Heartbeat Engine
+    startHeartbeat().catch((err) => {
+      console.error("Failed to start heartbeat engine:", err);
+    });
+
+    // Start Telegram Bot (bidirectional command handler)
+    startTelegramBot().catch((err) => {
+      console.error("Failed to start Telegram bot:", err);
+    });
 
     // Automatically launch default browser on startup
     if (process.env.NODE_ENV !== "production" && !process.env.NO_AUTO_OPEN) {

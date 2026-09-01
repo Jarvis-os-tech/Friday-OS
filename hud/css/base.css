@@ -1,0 +1,100 @@
+/* ============================================================
+   J.A.R.V.I.S — BASE / SHELL
+   Full-viewport HUD stage, underlay grid, scanlines, vignette.
+   ============================================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-void);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+body { -webkit-font-smoothing: antialiased; }
+
+::selection { background: rgba(0, 212, 255, 0.3); color: #fff; }
+
+/* ---------- HUD stage ---------- */
+.stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  grid-template-rows: 56px minmax(0, 1fr) 172px;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "left   center right"
+    "log    log    right";
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+}
+
+/* ---------- Underlay: polar + cartesian grid ---------- */
+.underlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-underlay);
+  pointer-events: none;
+  opacity: 0;
+  animation: fade-in var(--t-slow) var(--ease-out) forwards;
+}
+.underlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 62% at 50% 46%, rgba(0,0,0,.55), transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 62% at 50% 46%, rgba(0,0,0,.55), transparent 78%);
+}
+.underlay::after {
+  /* polar grid behind the orb */
+  content: "";
+  position: absolute;
+  left: 50%; top: 46%;
+  width: 92vmin; height: 92vmin;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle,
+      transparent 0 119px,
+      var(--border-faint) 119px 120px),
+    conic-gradient(from 0deg,
+      transparent 0deg 88deg, var(--border-faint) 89deg 91deg,
+      transparent 92deg 178deg, var(--border-faint) 179deg 181deg,
+      transparent 182deg 268deg, var(--border-faint) 269deg 271deg,
+      transparent 272deg 358deg, var(--border-faint) 359deg 360deg);
+  mask-image: radial-gradient(circle, transparent 34%, #000 36%, transparent 72%);
+  -webkit-mask-image: radial-gradient(circle, transparent 34%, #000 36%, transparent 72%);
+  animation: underlay-drift 60s linear infinite;
+}
+
+/* ---------- Scanlines + vignette overlay ---------- */
+.crt {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+.crt::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent 0 2px, rgba(0, 0, 0, 0.12) 2px 4px);
+  mix-blend-mode: multiply;
+}
+.crt::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 105% 95% at 50% 48%, transparent 58%, rgba(2, 5, 12, 0.85));
+}
+
+@keyframes fade-in     { to { opacity: 1; } }
+@keyframes underlay-drift { to { transform: translate(-50%, -50%) rotate(360deg); } }

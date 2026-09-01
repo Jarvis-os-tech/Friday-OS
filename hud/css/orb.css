@@ -1,0 +1,165 @@
+/* ============================================================
+   J.A.R.V.I.S — ARC REACTOR ORB
+   The single focal point. SVG ring architecture + canvas halo.
+   State is expressed through color + motion + label (never color alone).
+   ============================================================ */
+
+.center-col {
+  grid-area: center;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* ---------- Orb assembly ---------- */
+.orb-wrap {
+  --orb-size: min(46vh, 46vw, 460px);
+  position: relative;
+  width: var(--orb-size);
+  height: var(--orb-size);
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+.orb-wrap:focus-visible {
+  outline: 1px solid var(--cyan-bright);
+  outline-offset: 12px;
+}
+
+/* canvas halo — frequency spikes radiate on live audio */
+#halo {
+  position: absolute;
+  inset: -22%;
+  width: 144%;
+  height: 144%;
+  pointer-events: none;
+}
+
+/* SVG reactor core */
+.reactor { position: relative; z-index: 2; overflow: visible; }
+
+.ring-rotate-slow  { transform-origin: 50% 50%; animation: spin var(--t-spin-slow) linear infinite; }
+.ring-rotate-rev   { transform-origin: 50% 50%; animation: spin-rev var(--t-spin-rev) linear infinite; }
+.ring-rotate-mid   { transform-origin: 50% 50%; animation: spin 14s linear infinite; }
+@keyframes spin     { to { transform: rotate(360deg); } }
+@keyframes spin-rev { to { transform: rotate(-360deg); } }
+
+.core {
+  fill: rgba(0, 212, 255, 0.08);
+  stroke: var(--cyan);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 6px rgba(0,212,255,.8)) drop-shadow(0 0 18px rgba(0,212,255,.35));
+}
+.ring-line  { fill: none; stroke: var(--cyan); filter: drop-shadow(0 0 3px rgba(0,212,255,.55)); }
+.ring-faint { fill: none; stroke: var(--cyan-dim); stroke-width: 1; }
+.tick       { stroke: var(--cyan-dim); stroke-width: 1.5; }
+
+/* breathing idle */
+.orb-idle .reactor { animation: breathe var(--t-breathe) ease-in-out infinite; }
+@keyframes breathe {
+  0%, 100% { transform: scale(0.965); opacity: .82; }
+  50%      { transform: scale(1.02);  opacity: 1; }
+}
+
+/* ---------- State tinting via CSS custom props ------------- */
+.orb-wrap[data-state="idle"]      { --state-color: var(--cyan); }
+.orb-wrap[data-state="listening"] { --state-color: #4dffc3; }
+.orb-wrap[data-state="thinking"]  { --state-color: var(--amber); }
+.orb-wrap[data-state="speaking"]  { --state-color: var(--cyan-bright); }
+.orb-wrap[data-state="error"]     { --state-color: var(--red); }
+
+.orb-wrap[data-state="listening"] .core,
+.orb-wrap[data-state="thinking"]  .core,
+.orb-wrap[data-state="speaking"]  .core,
+.orb-wrap[data-state="error"]     .core {
+  stroke: var(--state-color);
+  fill: color-mix(in srgb, var(--state-color) 10%, transparent);
+  filter: drop-shadow(0 0 6px var(--state-color)) drop-shadow(0 0 20px color-mix(in srgb, var(--state-color) 45%, transparent));
+}
+.orb-wrap[data-state="listening"] .ring-line,
+.orb-wrap[data-state="thinking"]  .ring-line,
+.orb-wrap[data-state="speaking"]  .ring-line,
+.orb-wrap[data-state="error"]     .ring-line { stroke: var(--state-color); }
+.orb-wrap[data-state="thinking"] .tick,
+.orb-wrap[data-state="error"]    .tick { stroke: color-mix(in srgb, var(--state-color) 60%, transparent); }
+
+/* thinking: rings accelerate + inner spinner engages */
+.orb-wrap[data-state="thinking"] .ring-rotate-slow { animation-duration: 7s; }
+.orb-wrap[data-state="thinking"] .ring-rotate-rev  { animation-duration: 9s; }
+.spinner-arc { opacity: 0; transition: opacity var(--t-med) var(--ease-out); }
+.orb-wrap[data-state="thinking"] .spinner-arc { opacity: 1; }
+
+/* error: fast pulse */
+.orb-wrap[data-state="error"] .reactor { animation: err-pulse .8s ease-in-out infinite; }
+@keyframes err-pulse {
+  0%, 100% { opacity: 1; } 50% { opacity: .45; }
+}
+
+/* ---------- State caption under orb ---------- */
+.state-block {
+  margin-top: calc(var(--sp-5) * -0.4);
+  text-align: center;
+  z-index: 2;
+  pointer-events: none;
+}
+.state-name {
+  font-family: var(--font-display);
+  font-size: clamp(15px, 2vw, 21px);
+  letter-spacing: 0.34em;
+  padding-left: 0.34em; /* optically recenters tracked text */
+  color: var(--text-hi);
+  text-shadow: var(--glow-text) rgba(0, 212, 255, 0.45);
+  transition: color var(--t-fast), text-shadow var(--t-fast);
+}
+.orb-wrap[data-state="thinking"] ~ .state-block .state-name,
+.center-col[data-thinking] .state-name { color: var(--amber); }
+.state-sub {
+  margin-top: 6px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-mid);
+}
+.state-hint {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-low);
+  letter-spacing: var(--track-mid);
+}
+
+/* ---------- Live caption line (ephemeral speech) ---------- */
+.live-caption {
+  position: absolute;
+  bottom: clamp(8px, 2vh, 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(72ch, 82%);
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: clamp(15px, 1.6vw, 19px);
+  line-height: 1.5;
+  color: var(--text-hi);
+  text-shadow: 0 2px 12px rgba(0,0,0,.9);
+  z-index: 3;
+  pointer-events: none;
+}
+.live-caption .who {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--track-wide);
+  color: var(--cyan);
+  margin-right: 10px;
+  text-transform: uppercase;
+}

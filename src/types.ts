@@ -81,7 +81,23 @@ export interface AutoResearchState {
 }
 
 export interface SkillDisplayCard {
-  type: 'weather' | 'news' | 'reminder_created' | 'reminders_list' | 'calculation' | 'hermes_response' | 'obsidian_note' | 'obsidian_search' | string;
+  type:
+    | 'weather'
+    | 'news'
+    | 'reminder_created'
+    | 'reminders_list'
+    | 'calculation'
+    | 'hermes_response'
+    | 'prime_response'
+    | 'ultron_audit'
+    | 'ultron_boost'
+    | 'ultron_heal'
+    | 'ultron_security'
+    | 'system_telemetry'
+    | 'system_control'
+    | 'obsidian_note'
+    | 'obsidian_search'
+    | string;
   title: string;
   data: any;
 }
@@ -171,6 +187,8 @@ export type TaskCategory =
   | 'research'
   | 'productivity'
   | 'hermes'
+  | 'prime_agent'
+  | 'ultron'
   | 'obsidian'
   | 'calculation'
   | 'data_fetch'

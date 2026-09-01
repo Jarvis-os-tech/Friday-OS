@@ -1,0 +1,19 @@
+[package]
+name = "jarvis-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Jarvis Audio Gateway — Zero-GC, microsecond-latency Linux audio engine"
+
+[dependencies]
+cpal = "0.15"
+tokio = { version = "1", features = ["full"] }
+ringbuf = "0.4"
+byteorder = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

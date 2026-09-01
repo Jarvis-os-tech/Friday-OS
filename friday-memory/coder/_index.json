@@ -1,0 +1,18 @@
+{
+  "department": "coder",
+  "version": 1,
+  "updated": "2026-08-31T21:12:00.000Z",
+  "entries": [],
+  "schema": {
+    "id": "string (uuid)",
+    "type": "note|decision|fact|pattern|summary",
+    "title": "string",
+    "tags": [
+      "string"
+    ],
+    "path": "relative path from department root",
+    "created": "ISO timestamp",
+    "updated": "ISO timestamp",
+    "owner": "dept|friday"
+  }
+}

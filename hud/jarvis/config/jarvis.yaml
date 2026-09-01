@@ -1,0 +1,50 @@
+# JARVIS Backend Config — continuous listening, no voice layer
+# Voice is handled in Google AI Studio; this config is for stream + memory + tools
+
+vault:
+  path: ~/Obsidian/Jarvis-Memory-Vault
+  fallback: ~/Obsidian/Jarvis-Memory
+  git_auto_commit: true
+  commit_interval_minutes: 5
+
+stream:
+  host: 0.0.0.0
+  port: 8001
+  ws_path: /ws
+  rest_fallback: true
+  # Studio points to ws://localhost:8001/ws
+  allowed_origins: ["*"]
+
+memory:
+  # recent context window for brain
+  recent_hours: 24
+  recent_limit: 50
+  search_limit: 10
+
+reasoning:
+  # separate from Studio voice LLM — background reasoning
+  provider: omniroute  # localhost:20128
+  model: auto/best-fast
+  fallback: gemini-flash-lite-latest
+  url: http://localhost:20128/v1
+  timeout: 20
+
+tools:
+  expose_schemas_at: /tools/schemas
+  allow_terminal: true
+  allow_file_write: true
+  blocked_commands: ["rm -rf /", "mkfs", ":(){", "chmod 777"]
+
+proactive:
+  enabled: true
+  jobs:
+    - id: morning_brief
+      schedule: "0 6 * * *"
+    - id: vault_commit
+      schedule: "*/5 * * * *"
+    - id: daily_synthesis
+      schedule: "0 22 * * *"
+
+server:
+  cors: true
+  log_level: info

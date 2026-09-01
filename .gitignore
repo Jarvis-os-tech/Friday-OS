@@ -6,3 +6,20 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# C++ compiled binaries
+workers_cpp/bin/
+
+# Rust build artifacts
+gateway_rust/target/
+memory_engine/target/
+
+# Python
+__pycache__/
+*.pyc
+core_engine/.forge_venv/
+custom_tools/.forge_venv/
+
+# Data files
+data/*.db
+data/auth_tokens.json

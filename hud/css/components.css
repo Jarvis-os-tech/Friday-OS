@@ -1,0 +1,231 @@
+/* ============================================================
+   J.A.R.V.I.S — COMPONENTS
+   Panels, corner brackets, badges, buttons, bars, radar.
+   ============================================================ */
+
+/* ---------- Panel: translucent hologram plane ---------- */
+.panel {
+  position: relative;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-faint);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.panel::before {   /* top scanline accent */
+  content: "";
+  position: absolute;
+  top: 0; left: 8%;
+  width: 84%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+}
+
+/* corner brackets — the HUD signature */
+.bracket::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) top left / 14px 1px,
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) top left / 1px 14px,
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) top right / 14px 1px,
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) top right / 1px 14px,
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) bottom left / 14px 1px,
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) bottom left / 1px 14px,
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) bottom right / 14px 1px,
+    linear-gradient(var(--cyan-dim), var(--cyan-dim)) bottom right / 1px 14px;
+  background-repeat: no-repeat;
+}
+
+/* ---------- Panel header ---------- */
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+  flex-shrink: 0;
+}
+.panel-title {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-mid);
+}
+.panel-title b { color: var(--cyan); font-weight: 600; }
+
+/* ---------- Status badge (never color alone: dot + word) ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--track-mid);
+  text-transform: uppercase;
+  color: var(--text-mid);
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-faint);
+}
+.badge .dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.badge[data-tone="ok"]     { color: var(--green); border-color: rgba(38,222,129,.3); background: rgba(38,222,129,.08); }
+.badge[data-tone="warn"]   { color: var(--amber); border-color: rgba(255,184,0,.3);  background: rgba(255,184,0,.08); }
+.badge[data-tone="crit"]   { color: var(--red);   border-color: rgba(255,71,87,.35); background: rgba(255,71,87,.1); }
+.badge[data-tone="info"]   { color: var(--cyan);  border-color: rgba(0,212,255,.3);  background: rgba(0,212,255,.08); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  appearance: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--cyan);
+  background: rgba(0, 212, 255, 0.06);
+  border: 1px solid var(--border-strong);
+  padding: 9px 18px;
+  transition: box-shadow var(--t-fast) var(--ease-out),
+              background var(--t-fast) var(--ease-out);
+  user-select: none;
+}
+.btn:hover  { background: rgba(0,212,255,.12); box-shadow: var(--glow-hover); }
+.btn:active { box-shadow: var(--glow-active); }
+.btn:focus-visible,
+.orb-btn:focus-visible {
+  outline: 1px solid var(--cyan-bright);
+  outline-offset: 3px;
+}
+
+/* icon button */
+.iconbtn {
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-faint);
+  color: var(--text-mid);
+  width: 34px; height: 30px;
+  display: grid; place-items: center;
+  transition: all var(--t-fast) var(--ease-out);
+}
+.iconbtn:hover { color: var(--cyan); border-color: var(--border-strong); box-shadow: var(--glow-hover); }
+.iconbtn[aria-pressed="true"] { color: var(--cyan); border-color: var(--border-strong); background: rgba(0,212,255,.1); }
+
+/* ---------- Meter bar ---------- */
+.meter {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.meter > i {
+  display: block;
+  height: 100%;
+  background: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan-dim);
+  transition: width 600ms var(--ease-inout);
+}
+
+/* ---------- Radar ---------- */
+.radar {
+  position: relative;
+  aspect-ratio: 1;
+  margin-top: auto;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 31%, var(--border-faint) 31% 32%, transparent 32% 64%, var(--border-faint) 64% 65%, transparent 65% 97%, var(--border-strong) 97% 100%);
+  overflow: hidden;
+}
+.radar::before {   /* sweep */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 270deg, rgba(0,212,255,.05) 320deg, rgba(0,212,255,.45) 359deg, transparent 360deg);
+  animation: sweep var(--t-sweep) linear infinite;
+}
+.radar::after {    /* crosshair */
+  content: "";
+  position: absolute;
+  inset: 50% 6%;
+  border-top: 1px solid var(--border-faint);
+  transform: rotate(90deg);
+  box-shadow: 0 0 0 1px transparent;
+}
+.radar .ring-x {
+  position: absolute;
+  inset: 50% 6%;
+  border-top: 1px solid var(--border-faint);
+}
+.blip {
+  position: absolute;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+  opacity: 0;
+  animation: blip-fade var(--t-sweep) linear infinite;
+}
+@keyframes sweep     { to { transform: rotate(360deg); } }
+@keyframes blip-fade { 0% {opacity:0;} 12% {opacity:.95;} 55% {opacity:.25;} 100% {opacity:0;} }
+
+/* ---------- Sparkline canvas ---------- */
+.spark { width: 100%; height: 34px; display: block; opacity: .9; }
+
+/* ---------- Stat rows ---------- */
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mid);
+  letter-spacing: var(--track-mid);
+}
+.stat-row b { color: var(--text-hi); font-weight: 400; }
+.stat-row .up { color: var(--green); }
+.stat-row .down { color: var(--red); }
+
+/* ---------- Divider label ---------- */
+.divider {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-family: var(--font-ui); font-size: 10px; font-weight: 600;
+  letter-spacing: var(--track-wide); text-transform: uppercase;
+  color: var(--text-low);
+  margin: var(--sp-4) 0 var(--sp-2);
+}
+.divider::before, .divider::after {
+  content: ""; flex: 1; height: 1px;
+  background: var(--border-faint);
+}
+
+/* ---------- Keyboard hint chip ---------- */
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-mid);
+  border: 1px solid var(--border-faint);
+  padding: 1px 6px;
+  background: rgba(255,255,255,.03);
+}
+
+/* ---------- Materialize entrance (F.R.I.D.A.Y. swoop) ----- */
+.materialize { opacity: 0; transform: translateY(14px) scale(.985); filter: blur(4px); }
+.booted .materialize {
+  animation: materialize var(--t-slow) var(--ease-out) forwards;
+  animation-delay: calc(var(--m-delay, 0) * 90ms);
+}
+@keyframes materialize {
+  60% { filter: blur(0); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}

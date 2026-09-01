@@ -1,0 +1,19 @@
+{
+  "name": "create_ni10_button",
+  "description": "Creates a simulated button action that triggers a not implemented notification.",
+  "schema": {
+    "name": "create_ni10_button",
+    "description": "Create a simple UI button named NI10 that shows a notification when clicked.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {}
+    }
+  },
+  "requirements": [],
+  "status": "EXPERIMENTAL",
+  "created_at": 1787238207.9354625,
+  "updated_at": 1787238207.935463,
+  "execution_count": 0,
+  "success_count": 0,
+  "failure_count": 0
+}

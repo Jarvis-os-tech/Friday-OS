@@ -5,6 +5,24 @@
  */
 
 const ACKNOWLEDGMENT_VARIATIONS: Record<string, string[]> = {
+  prime_agent: [
+    "Dispatching coding task to Prime Agent.",
+    "Engaging Prime Agent for software engineering and execution.",
+    "Handing off development task to Prime Agent.",
+  ],
+  ultron: [
+    "Engaging Ultron for deep OS diagnostics and performance optimization.",
+    "Initiating Ultron system monitoring and awareness sweep.",
+    "Ultron is analyzing system telemetry and hardware governors.",
+  ],
+  system: [
+    "Executing system control command.",
+    "Adjusting system settings now.",
+  ],
+  hermes: [
+    "Routing task to Hermes personal intelligence.",
+    "Delegating complex workflow to Hermes.",
+  ],
   weather: [
     "Checking live weather conditions and forecast now.",
     "Scanning meteorological data for you.",
@@ -24,10 +42,6 @@ const ACKNOWLEDGMENT_VARIATIONS: Record<string, string[]> = {
     "Searching your Obsidian vault in the background.",
     "Querying your notes now.",
     "Accessing your knowledge vault.",
-  ],
-  hermes: [
-    "Routing task to Hermes personal intelligence.",
-    "Delegating to Hermes in the background.",
   ],
   productivity: [
     "Updating your scheduled reminders.",
@@ -55,7 +69,13 @@ export function getContextualVerbalPhrase(intentOrSkill?: string, target?: strin
   const lower = intentOrSkill.toLowerCase();
   let category = "general";
 
-  if (lower.includes("weather") || lower.includes("forecast") || lower.includes("temp")) {
+  if (lower.includes("prime") || lower.includes("coding") || lower.includes("program") || lower.includes("script")) {
+    category = "prime_agent";
+  } else if (lower.includes("ultron") || lower.includes("boost") || lower.includes("diagnostic") || lower.includes("heal")) {
+    category = "ultron";
+  } else if (lower.includes("system") || lower.includes("volume") || lower.includes("brightness") || lower.includes("power")) {
+    category = "system";
+  } else if (lower.includes("weather") || lower.includes("forecast") || lower.includes("temp")) {
     category = "weather";
   } else if (lower.includes("news") || lower.includes("headline") || lower.includes("article")) {
     category = "news";
