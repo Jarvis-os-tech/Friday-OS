@@ -14,7 +14,12 @@
  * Runs as a 24/7 background service started from server.ts.
  */
 
-import { isTelegramConfigured, verifyTelegramBot, sendTelegramMessage } from "./telegramNotifier.js";
+import {
+  isTelegramConfigured,
+  verifyTelegramBot,
+  sendTelegramMessage,
+  withTypingIndicator,
+} from "./telegramNotifier.js";
 import { parallelTaskManager } from "./parallelTaskManager.js";
 import { getRemindersStore, getDailyScheduleStore, executeSkillByName } from "./skills.js";
 import { getHeartbeatStatus, sendMorningDailyDigest } from "./heartbeat.js";
@@ -472,7 +477,9 @@ async function pollUpdates(): Promise<void> {
 
         const parsed = parseCommand(message.text, message.chat.id, message.from?.id || 0);
         if (parsed) {
-          await dispatchCommand(parsed);
+          await withTypingIndicator(async () => {
+            await dispatchCommand(parsed);
+          }, message.chat.id);
         }
       }
     }

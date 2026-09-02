@@ -240,6 +240,67 @@ export async function notifyProactiveAlert(
 }
 
 /**
+ * Send a chat action (typing, upload_document, etc.) to Telegram.
+ * Telegram typing indicators last ~5 seconds.
+ */
+export async function sendTelegramChatAction(
+  action: string = "typing",
+  chatId?: string | number
+): Promise<boolean> {
+  if (!isTelegramConfigured()) return false;
+  const targetChatId = chatId ? String(chatId) : TELEGRAM_CHAT_ID;
+
+  try {
+    const response = await fetch(`${TELEGRAM_API_BASE}/sendChatAction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: targetChatId,
+        action,
+      }),
+    });
+    const result = await response.json();
+    return Boolean(result.ok);
+  } catch (error) {
+    console.debug("[Telegram] sendChatAction error:", error);
+    return false;
+  }
+}
+
+/**
+ * Start a continuous typing indicator loop that refreshes every 4 seconds.
+ * Returns a stop function.
+ */
+export function startTypingIndicator(
+  chatId?: string | number,
+  intervalMs: number = 4000
+): () => void {
+  sendTelegramChatAction("typing", chatId).catch(() => {});
+  const timer = setInterval(() => {
+    sendTelegramChatAction("typing", chatId).catch(() => {});
+  }, intervalMs);
+
+  return () => {
+    clearInterval(timer);
+  };
+}
+
+/**
+ * Convenience wrapper: executes an async action while continuously showing typing indicator.
+ */
+export async function withTypingIndicator<T>(
+  action: () => Promise<T>,
+  chatId?: string | number
+): Promise<T> {
+  const stopTyping = startTypingIndicator(chatId);
+  try {
+    return await action();
+  } finally {
+    stopTyping();
+  }
+}
+
+/**
  * Verify Telegram bot connectivity. Returns bot info on success.
  */
 export async function verifyTelegramBot(): Promise<{
