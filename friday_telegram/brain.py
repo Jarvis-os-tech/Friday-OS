@@ -825,14 +825,14 @@ class FridayBrain:
         ok, msg = self._llm_manager.set_provider(target)
         return msg
 
-    async def _run_omniroute_ai_turn(self, text: str, chat_id: str, model: Optional[str] = None) -> Optional[str]:
-        """Execute turn using local Omniroute Gateway with full function calling and Bearer Auth."""
+    async def _run_omniroute_ai_turn(self, text: str, chat_id: str) -> Optional[str]:
+        """Execute turn using local Omniroute Gateway with a robust autonomous tool calling loop."""
         system_instruction = (
             "You are Friday, Gopi's sovereign AI assistant and 24/7 personal manager on Linux. "
             "You have direct control over host actuators and specialist agents: "
             "Prime Agent (coding), Hermes (research & memory vault), OpenClaw (workspace), and Ultron (OS diagnostics). "
-            "Style: Razor-sharp, direct, concise, structured Markdown with clean bold keys and emojis. Address Gopi as 'Gopi', 'boss', or 'sir'. "
-            "Call tools when actions, commands, status, code, research, or system controls are needed."
+            "Style: Razor-sharp, direct, concise, structured Markdown. Address Gopi as 'Gopi'. "
+            "Use tools whenever actions, commands, status, file operations, terminal commands, code, research, or system controls are needed."
         )
 
         tools = self._build_openai_tools()
@@ -844,71 +844,58 @@ class FridayBrain:
         active_p = self._llm_manager.get_active_provider()
         base_url = (active_p.base_url if active_p.name == "omniroute" else self._omniroute_url).rstrip("/")
         api_key = active_p.api_key if active_p.name == "omniroute" else self._omniroute_api_key
-        target_model = model or (active_p.default_model if active_p.name == "omniroute" else self._omniroute_model)
+        target_model = active_p.default_model if active_p.name == "omniroute" else self._omniroute_model
 
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                payload = {
-                    "model": target_model,
-                    "messages": messages,
-                    "tools": tools,
-                    "temperature": 0.3,
-                }
-                resp = await client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
-                if resp.status_code != 200:
-                    log.warning(f"Omniroute returned HTTP {resp.status_code}: {resp.text[:200]}")
-                    return None
+        # Loop for autonomous multi-step tool execution (up to 8 turns)
+        for turn in range(8):
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    payload = {
+                        "model": target_model,
+                        "messages": messages,
+                        "tools": tools,
+                        "temperature": 0.2,
+                    }
+                    resp = await client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
+                    if resp.status_code != 200:
+                        log.warning(f"Omniroute returned HTTP {resp.status_code}: {resp.text[:200]}")
+                        break
 
-                data = resp.json()
-                choice = (data.get("choices") or [{}])[0]
-                message = choice.get("message", {})
+                    data = resp.json()
+                    choice = (data.get("choices") or [{}])[0]
+                    message = choice.get("message", {})
 
-                # Check if tool calls were requested
-                tool_calls = message.get("tool_calls") or []
-                if not tool_calls:
-                    return message.get("content") or "Standing by, Boss."
+                    # If no tool calls, synthesis is done
+                    if not message.get("tool_calls"):
+                        return message.get("content") or "Action completed, Boss."
 
-                # Execute tool calls
-                tool_results_summary = []
-                messages.append(message)
+                    # Append assistant's tool call message
+                    messages.append(message)
 
-                for tc in tool_calls:
-                    fn_name = tc.get("function", {}).get("name", "")
-                    raw_args = tc.get("function", {}).get("arguments", "{}")
-                    try:
-                        args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-                    except Exception:
-                        args = {}
+                    # Execute tool calls
+                    for tc in message.get("tool_calls", []):
+                        fn_name = tc.get("function", {}).get("name", "")
+                        raw_args = tc.get("function", {}).get("arguments", "{}")
+                        try:
+                            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+                        except Exception:
+                            args = {}
 
-                    res = await self._execute_tool_call(fn_name, args, chat_id)
-                    tool_results_summary.append(str(res))
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.get("id", "call_0"),
-                        "content": str(res)
-                    })
-
-                # Second turn for final synthesis
-                followup_resp = await client.post(
-                    f"{base_url}/chat/completions",
-                    json={"model": target_model, "messages": messages, "temperature": 0.3},
-                    headers=headers,
-                    timeout=60.0
-                )
-                if followup_resp.status_code == 200:
-                    final_data = followup_resp.json()
-                    final_msg = (final_data.get("choices") or [{}])[0].get("message", {}).get("content", "")
-                    if final_msg:
-                        return final_msg
-
-                return "\n\n".join(tool_results_summary)
-        except Exception as e:
-            log.warning(f"Omniroute AI turn failed ({e}), escalating to fallback ladder...")
-            return None
+                        res = await self._execute_tool_call(fn_name, args, chat_id)
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.get("id", f"call_{turn}"),
+                            "content": json.dumps(res) if isinstance(res, (dict, list)) else str(res)
+                        })
+            except Exception as e:
+                log.warning(f"Omniroute AI loop turn {turn} failed: {e}")
+                break
+        
+        return "Autonomous agent loop reached turn limit. Synthesis pending."
 
     async def _run_hermes_cli_turn(self, text: str) -> Optional[str]:
         """Execute turn using local Hermes CLI headless runner."""
@@ -1109,7 +1096,7 @@ class FridayBrain:
 
         if active_p.name == "omniroute":
             # Priority 1: Omniroute Gateway with tools
-            reply = await self._run_omniroute_ai_turn(text, chat_id, model=active_m)
+            reply = await self._run_omniroute_ai_turn(text, chat_id)
             if reply:
                 return reply, None
 
