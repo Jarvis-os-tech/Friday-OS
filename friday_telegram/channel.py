@@ -494,21 +494,31 @@ class FridayTelegramChannel:
 
             try:
                 # 2. Process with Multi-Agent Brain
-                reply_text = await self._brain.process_message(composite_msg)
+                reply_text, img_path = await self._brain.process_message(composite_msg)
             except Exception as e:
                 log.error(f"Brain execution error for chat {chat_id}: {e}", exc_info=True)
                 reply_text = f"❌ <b>Execution Notice</b>: {e}"
+                img_path = None
 
             await ag_ui_bridge.emit_typing(chat_id, active=False)
             await ag_ui_bridge.emit_agent_state("speaking", agent="friday")
 
-        # 3. Deliver Outbound Reply
-        await self.send_message(
-            chat_id=chat_id,
-            text=reply_text,
-            session_id=session.session_id,
-            reply_to_message_id=first.message_id if len(messages) == 1 else None
-        )
+        # 3. Deliver Outbound Reply (Photo or Text)
+        if img_path and os.path.exists(img_path):
+            await self.send_photo(
+                chat_id=chat_id,
+                photo_path=img_path,
+                caption=reply_text,
+                session_id=session.session_id,
+                reply_to_message_id=first.message_id if len(messages) == 1 else None
+            )
+        else:
+            await self.send_message(
+                chat_id=chat_id,
+                text=reply_text,
+                session_id=session.session_id,
+                reply_to_message_id=first.message_id if len(messages) == 1 else None
+            )
 
         await ag_ui_bridge.emit_agent_state("idle", agent="friday")
 
@@ -604,6 +614,54 @@ class FridayTelegramChannel:
             message_id=last_msg_id,
             chunks_sent=chunks_sent,
         )
+
+    async def send_photo(
+        self,
+        chat_id: str,
+        photo_path: str,
+        caption: Optional[str] = None,
+        session_id: Optional[str] = None,
+        reply_to_message_id: Optional[str] = None,
+    ) -> SendResult:
+        """Upload and deliver a photo/screenshot to Telegram chat."""
+        if not self._client or not os.path.exists(photo_path):
+            return SendResult(success=False, error="File not found or client offline")
+
+        try:
+            with open(photo_path, "rb") as f:
+                photo_bytes = f.read()
+
+            files = {
+                "photo": (Path(photo_path).name, photo_bytes, "image/png"),
+            }
+            data: Dict[str, Any] = {
+                "chat_id": str(chat_id),
+            }
+            if caption:
+                data["caption"] = markdown_to_telegram_html(caption)[:1024]
+                data["parse_mode"] = "HTML"
+            if reply_to_message_id:
+                data["reply_to_message_id"] = int(reply_to_message_id)
+
+            resp = await self._client.post(
+                "/sendPhoto",
+                data=data,
+                files=files,
+                timeout=35.0,
+            )
+            r_json = resp.json()
+            if r_json.get("ok"):
+                msg_id = str(r_json["result"]["message_id"])
+                if session_id:
+                    self._save_message(session_id, "assistant", f"[Photo: {caption or 'Screenshot'}]", msg_id)
+                return SendResult(success=True, message_id=msg_id)
+            else:
+                err = r_json.get("description", "Failed to upload photo")
+                log.warning(f"sendPhoto failed: {err}")
+                return SendResult(success=False, error=err)
+        except Exception as e:
+            log.warning(f"Error in send_photo: {e}")
+            return SendResult(success=False, error=str(e))
 
     # ── Gap Recovery & Ledger Flush ───────────────────────────────────
 
