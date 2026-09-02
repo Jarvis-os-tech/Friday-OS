@@ -423,24 +423,24 @@ class FridayBrain:
                 await ag_ui_bridge.emit_display_card("system_telemetry", "Friday OS Live Telemetry", data)
 
                 return (
-                    "📊 <b>Friday OS — 24/7 System Status</b>\n\n"
-                    f"⚙️ <b>CPU</b>: {cpu}%\n"
-                    f"🧠 <b>RAM</b>: {ram_used} MB / {ram_total} MB\n"
-                    f"💾 <b>Storage</b>: {disk}%\n"
-                    f"🔋 <b>Power</b>: {bat_str}\n"
-                    f"🌡️ <b>Thermals</b>: Max {max_temp}°C\n"
-                    f"⏱️ <b>Uptime</b>: {uptime}\n\n"
-                    "🤖 <b>Specialist Fleet</b>:\n"
-                    "• 🟢 <b>Friday Telegram Channel</b>: Active (FallbackTransport + AG UI)\n"
-                    "• ⭐️ <b>Prime Agent</b>: Online (Coding & Testing)\n"
-                    "• 🔹 <b>Hermes Intelligence</b>: Online (Research & Vault)\n"
-                    "• 🦞 <b>OpenClaw Gateway</b>: Online (Workspace & Tools)\n"
-                    "• 🔹 <b>Ultron Engine</b>: Online (OS Diagnostics)"
+                    "📊 **Friday OS — System Status**\n\n"
+                    f"⚙️ **CPU:** {cpu}%\n"
+                    f"🧠 **RAM:** {ram_used} MB / {ram_total} MB\n"
+                    f"💾 **Storage:** {disk}%\n"
+                    f"🔋 **Power:** {bat_str}\n"
+                    f"🌡️ **Thermals:** Max {max_temp}°C\n"
+                    f"⏱️ **Uptime:** {uptime}\n\n"
+                    "🤖 **Specialist Fleet**\n"
+                    "• **Friday Telegram:** Active\n"
+                    "• **Prime Agent:** Online (Coding & Testing)\n"
+                    "• **Hermes Intelligence:** Online (Research & Vault)\n"
+                    "• **OpenClaw Gateway:** Online (Workspace & Tools)\n"
+                    "• **Ultron Engine:** Online (OS Diagnostics)"
                 )
             except Exception as e:
                 log.error(f"Telemetry error: {e}")
 
-        return "📊 <b>Friday OS Status</b>: All engines online and operating normally."
+        return "📊 **Friday OS Status:** All engines online and operating normally."
 
     async def get_agenda_report(self) -> str:
         """Fetch daily agenda, schedule, and reminders from memory vault."""
@@ -453,23 +453,23 @@ class FridayBrain:
                 today_f = status.get("today_conversation_file", "None")
 
                 return (
-                    "📋 <b>Today's Personal Agenda & Memory Snapshot</b>\n\n"
-                    f"📅 <b>Daily Log</b>: <code>{Path(today_f).name if today_f else 'none'}</code>\n"
-                    f"🧠 <b>Indexed Facts</b>: {facts}\n"
-                    f"⚡ <b>Specialist Skills</b>: {skills}\n\n"
-                    "<i>Commands available:</i>\n"
-                    "• /code &lt;task&gt; — Build code with Prime Agent\n"
-                    "• /task &lt;prompt&gt; — Delegate research to Hermes\n"
-                    "• /openclaw &lt;prompt&gt; — Delegate to OpenClaw\n"
-                    "• /sh &lt;cmd&gt; — Execute Linux shell command\n"
-                    "• /screenshot — Capture desktop screen\n"
-                    "• /remind &lt;text&gt; — Set new reminder\n"
-                    "• /boost — Ultron performance boost"
+                    "📋 **Daily Agenda & Memory Snapshot**\n\n"
+                    f"📅 **Daily Log:** `{Path(today_f).name if today_f else 'none'}`\n"
+                    f"🧠 **Indexed Facts:** {facts}\n"
+                    f"⚡ **Specialist Skills:** {skills}\n\n"
+                    "**Available Commands:**\n"
+                    "• `/code <task>` — Build code with Prime Agent\n"
+                    "• `/task <prompt>` — Delegate research to Hermes\n"
+                    "• `/openclaw <prompt>` — Delegate to OpenClaw\n"
+                    "• `/sh <cmd>` — Execute Linux shell command\n"
+                    "• `/screenshot` — Capture desktop screen\n"
+                    "• `/remind <text>` — Set new reminder\n"
+                    "• `/boost` — Ultron performance boost"
                 )
             except Exception as e:
                 log.error(f"Agenda vault error: {e}")
 
-        return "📋 <b>Agenda</b>: Standing by for commands."
+        return "📋 **Agenda:** Standing by for commands."
 
     async def set_reminder(self, text: str) -> str:
         """Store reminder in Friday memory vault."""

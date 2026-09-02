@@ -149,7 +149,7 @@ async def _heartbeat_tick():
             if now - last > _ALERT_COOLDOWN:
                 _alert_cooldowns["battery_low"] = now
                 await _send_telegram(
-                    f"🚨 <b>Low Battery Alert</b>\n\n🔋 {pct}% remaining (discharging).\nPlease connect charger."
+                    f"🔋 **Low Battery Alert:** {pct}% remaining (discharging). Please connect charger."
                 )
 
     # 2. High thermal alert
@@ -165,7 +165,7 @@ async def _heartbeat_tick():
         if now - last > _ALERT_COOLDOWN:
             _alert_cooldowns["thermal_high"] = now
             await _send_telegram(
-                f"🔥 <b>Thermal Alert</b>\n\n🌡️ Critical temperature detected: {max_temp}°C.\nUltron recommends throttling high-load tasks."
+                f"🌡️ **Thermal Alert:** Critical temperature detected ({max_temp}°C). Throttling recommended."
             )
 
     # 3. Morning digest (once per day after 8 AM)
@@ -175,7 +175,7 @@ async def _heartbeat_tick():
         _last_digest_date = today
         channel = _get_channel()
         digest = await channel._brain.get_system_status()
-        await _send_telegram(f"🌅 <b>Good Morning, Boss!</b>\n\n{digest}")
+        await _send_telegram(f"🌅 **Good morning, Gopi.**\n\n{digest}")
 
     if _tick_count % 12 == 1:
         cpu = tel.get("cpu_usage_percent", "?")

@@ -119,7 +119,7 @@ export async function sendMorningDailyDigest(force: boolean = false): Promise<bo
       getBatteryStatus().catch(() => null),
     ]);
 
-    let msg = `🌅 *Good Morning, Boss — Friday OS Daily Agenda*\n\n`;
+    let msg = `🌅 **Good morning, Gopi — Friday OS Daily Agenda**\n\n`;
 
     const nowFormatted = now.toLocaleDateString("en-IN", {
       weekday: "long",
@@ -127,16 +127,16 @@ export async function sendMorningDailyDigest(force: boolean = false): Promise<bo
       day: "numeric",
       timeZone: "Asia/Kolkata",
     });
-    msg += `📅 _${nowFormatted}_\n\n`;
+    msg += `📅 *${nowFormatted}*\n\n`;
 
     // 1. Priorities and Tasks
     if (reminders.length === 0 && schedule.length === 0) {
-      msg += `✨ *Priorities Today*: Your schedule is clear. Ready for new project goals.\n\n`;
+      msg += `✨ **Priorities Today:** Schedule is clear. Standing by for task assignments.\n\n`;
     } else {
-      msg += `📋 *Today's Key Priorities & Tasks*:\n`;
+      msg += `📋 **Today's Priorities & Tasks:**\n`;
       let count = 1;
       for (const item of schedule) {
-        msg += `${count}. 🎯 *${item.title}*${item.time ? ` _(${item.time})_` : ""}${item.assignedAgent ? ` ⟶ \`${item.assignedAgent}\`` : ""}\n`;
+        msg += `${count}. 🎯 **${item.title}**${item.time ? ` *(${item.time})*` : ""}${item.assignedAgent ? ` ⟶ \`${item.assignedAgent}\`` : ""}\n`;
         count++;
       }
       for (const rem of reminders) {
@@ -147,20 +147,20 @@ export async function sendMorningDailyDigest(force: boolean = false): Promise<bo
     }
 
     // 2. Autonomous Multi-Agent Fleet Status
-    msg += `🤖 *Specialist Fleet Status*:\n`;
-    msg += `• ⭐️ *Prime Agent*: Online & Ready for Software Engineering / Coding\n`;
-    msg += `• 🔹 *Hermes Intelligence*: Online & Ready for Deep Research & Vault\n`;
-    msg += `• 🔹 *Ultron Engine*: Online (Kernel, Thermals & RAM Protection Active)\n\n`;
+    msg += `🤖 **Specialist Fleet**\n`;
+    msg += `• **Prime Agent:** Online (Coding & Testing)\n`;
+    msg += `• **Hermes Intelligence:** Online (Research & Vault)\n`;
+    msg += `• **Ultron Engine:** Online (OS Diagnostics & Protection)\n\n`;
 
     // 3. System Telemetry
     if (telemetry?.cpu !== undefined) {
-      msg += `⚙️ CPU: ${telemetry.cpu}% | RAM: ${(telemetry.memory?.used / 1024 / 1024 / 1024).toFixed(1)}GB used\n`;
+      msg += `⚙️ **CPU:** ${telemetry.cpu}% | 🧠 **RAM:** ${(telemetry.memory?.used / 1024 / 1024 / 1024).toFixed(1)} GB used\n`;
     }
     if (battery && (battery as any).percentage !== undefined) {
-      msg += `🔋 Battery: ${(battery as any).percentage}% (${(battery as any).charging ? "Charging" : "On Battery"})\n`;
+      msg += `🔋 **Battery:** ${(battery as any).percentage}% (${(battery as any).charging ? "Charging" : "On Battery"})\n`;
     }
 
-    msg += `\n_I am continuously running in the background. Reply with any task anytime!_`;
+    msg += `\nStanding by for commands.`;
 
     const sent = await sendTelegramMessage(msg);
     if (sent) {

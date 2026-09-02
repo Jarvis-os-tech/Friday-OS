@@ -136,28 +136,28 @@ function formatSystemStatus(heartbeat: any, battery: any, thermals: any, telemet
       const t = typeof s === "number" ? s : (s as any)?.temp ?? (s as any)?.temperature ?? 0;
       if (t > maxTemp) maxTemp = t;
     }
-    msg += `🌡️ *Thermals*: Max ${maxTemp}°C\n`;
+    msg += `🌡️ **Thermals:** Max ${maxTemp}°C\n`;
   }
 
   // CPU / Memory
-  if (tel.cpu !== undefined) msg += `⚙️ *CPU*: ${tel.cpu}%\n`;
+  if (tel.cpu !== undefined) msg += `⚙️ **CPU:** ${tel.cpu}%\n`;
   if (tel.memory !== undefined) {
     const mem = tel.memory;
     const used = mem.used ? `${(mem.used / 1024 / 1024 / 1024).toFixed(1)} GB` : "N/A";
     const total = mem.total ? `${(mem.total / 1024 / 1024 / 1024).toFixed(1)} GB` : "N/A";
-    msg += `🧠 *Memory*: ${used} / ${total}\n`;
+    msg += `🧠 **Memory:** ${used} / ${total}\n`;
   }
 
   // Specialist Agents
-  msg += `\n🤖 *Specialist Fleet*:\n`;
-  msg += `• ⭐️ *Prime Agent*: Online (Coding & Testing)\n`;
-  msg += `• 🔹 *Hermes Intelligence*: Online (Research & Vault)\n`;
-  msg += `• 🔹 *Ultron Engine*: Online (OS Optimizer)\n`;
+  msg += `\n🤖 **Specialist Fleet**\n`;
+  msg += `• **Prime Agent:** Online (Coding & Testing)\n`;
+  msg += `• **Hermes Intelligence:** Online (Research & Vault)\n`;
+  msg += `• **Ultron Engine:** Online (OS Optimizer)\n`;
 
   // Tasks
   const activeTasks = parallelTaskManager.getActiveTasks();
   const completedTasks = parallelTaskManager.getCompletedTasks();
-  msg += `\n📋 *Tasks*: ${activeTasks.length} active, ${completedTasks.length} completed\n`;
+  msg += `\n📋 **Tasks:** ${activeTasks.length} active, ${completedTasks.length} completed\n`;
 
   return msg;
 }
@@ -169,7 +169,7 @@ async function handleAgendaCommand(chatId: number): Promise<void> {
     const reminders = getRemindersStore().filter((r) => !r.completed);
     const schedule = getDailyScheduleStore().filter((s) => !s.completed);
 
-    let msg = "📋 *Today's Personal Agenda & Priorities*\n\n";
+    let msg = "📋 **Today's Personal Agenda & Priorities**\n\n";
 
     if (reminders.length === 0 && schedule.length === 0) {
       msg += "✨ *No pending tasks*. Your agenda is clear and all specialist agents are on standby.\n\nReply with `/code <task>` or `/task <prompt>` to assign work!";
