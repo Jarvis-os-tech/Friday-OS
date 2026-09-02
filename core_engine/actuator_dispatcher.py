@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import platform
 import shlex
+import re
 from pathlib import Path
 from typing import Dict, Any, List, Callable, Optional
 from .security import security_guard
@@ -434,59 +435,81 @@ class ActuatorDispatcher:
             return await self.execute_cpp_worker("memory_tester")
 
         # ─── VISION & CAMERA CONTROL ─────────────────────────────────────────
-        elif tool in ["control_vision_mode"]:
-            mode = args.get("mode", "off")
-            action = args.get("action", "start")
-            
-            # Ground-truth sensor verification via C++ vision_ctrl
-            vis_check = await self.execute_cpp_worker("vision_ctrl", ["status"], timeout=3.0)
-            
-            if action == "stop" or mode == "off":
+        elif tool in ["control_vision_mode", "toggle_vision"]:
+            mode = str(args.get("mode", "off")).lower().strip()
+            action = str(args.get("action", "start")).lower().strip()
+
+            if action == "stop" or mode in ["off", "stop"]:
                 self.vision_state = {"mode": "off", "active": False}
                 await self._broadcast_to_ui({"type": "vision_control", "action": "stop", "mode": "off", "active": False})
+                await self._broadcast_to_ui({"type": "tool_call", "name": "toggle_vision", "toolName": "toggle_vision", "args": {"mode": "off"}})
                 return {"success": True, "vision_state": self.vision_state, "message": "Vision feeds stopped."}
-            
-            if mode == "camera":
-                cam_res = await self.execute_cpp_worker("vision_ctrl", ["check_camera"], timeout=3.0)
-                cameras = cam_res.get("result", {}).get("cameras", []) if cam_res.get("success") else []
-                if not cameras:
-                    return {"success": False, "error": "No video capture device (/dev/video*) found on host.", "vision_state": self.vision_state}
-            
+
             self.vision_state = {"mode": mode, "active": True}
             act_name = f"start_{mode}" if mode in ["screen", "camera"] else "start"
             await self._broadcast_to_ui({"type": "vision_control", "action": act_name, "mode": mode, "active": True})
-            return {"success": True, "vision_state": self.vision_state, "message": f"Vision mode '{mode}' activated and streaming."}
+            await self._broadcast_to_ui({"type": "tool_call", "name": "toggle_vision", "toolName": "toggle_vision", "args": {"mode": mode}})
+            return {"success": True, "vision_state": self.vision_state, "message": f"Vision mode '{mode}' activated and streaming to browser."}
 
         elif tool in ["start_screen_sharing"]:
             self.vision_state = {"mode": "screen", "active": True}
             await self._broadcast_to_ui({"type": "vision_control", "action": "start_screen", "mode": "screen", "active": True})
+            await self._broadcast_to_ui({"type": "tool_call", "name": "toggle_vision", "toolName": "toggle_vision", "args": {"mode": "screen"}})
             return {"success": True, "vision_state": self.vision_state, "message": "Screen sharing prompt dispatched. Awaiting display stream."}
 
         elif tool in ["stop_screen_sharing"]:
             if self.vision_state["mode"] == "screen":
                 self.vision_state = {"mode": "off", "active": False}
             await self._broadcast_to_ui({"type": "vision_control", "action": "stop_screen", "mode": "off", "active": False})
+            await self._broadcast_to_ui({"type": "tool_call", "name": "toggle_vision", "toolName": "toggle_vision", "args": {"mode": "off"}})
             return {"success": True, "vision_state": self.vision_state, "message": "Screen sharing deactivated."}
 
         elif tool in ["start_camera_vision"]:
-            cam_res = await self.execute_cpp_worker("vision_ctrl", ["check_camera"], timeout=3.0)
-            cameras = cam_res.get("result", {}).get("cameras", []) if cam_res.get("success") else []
-            if not cameras:
-                return {"success": False, "error": "No video capture device (/dev/video*) found on host."}
             self.vision_state = {"mode": "camera", "active": True}
             await self._broadcast_to_ui({"type": "vision_control", "action": "start_camera", "mode": "camera", "active": True})
+            await self._broadcast_to_ui({"type": "tool_call", "name": "toggle_vision", "toolName": "toggle_vision", "args": {"mode": "camera"}})
             return {"success": True, "vision_state": self.vision_state, "message": "Camera vision feed activated."}
 
         elif tool in ["stop_camera_vision"]:
             if self.vision_state["mode"] == "camera":
                 self.vision_state = {"mode": "off", "active": False}
             await self._broadcast_to_ui({"type": "vision_control", "action": "stop_camera", "mode": "off", "active": False})
+            await self._broadcast_to_ui({"type": "tool_call", "name": "toggle_vision", "toolName": "toggle_vision", "args": {"mode": "off"}})
             return {"success": True, "vision_state": self.vision_state, "message": "Camera deactivated."}
 
         elif tool in ["stop_all_vision"]:
             self.vision_state = {"mode": "off", "active": False}
             await self._broadcast_to_ui({"type": "vision_control", "action": "stop_all", "mode": "off", "active": False})
+            await self._broadcast_to_ui({"type": "tool_call", "name": "toggle_vision", "toolName": "toggle_vision", "args": {"mode": "off"}})
             return {"success": True, "vision_state": self.vision_state, "message": "All vision streams stopped."}
+
+        # ─── SESSION & SYSTEM HIGH-LEVEL CONTROLS ─────────────────────────────
+        elif tool in ["control_session"]:
+            sess_act = str(args.get("action", "disconnect")).lower().strip()
+            await self._broadcast_to_ui({"type": "tool_call", "name": "control_session", "toolName": "control_session", "args": {"action": sess_act}})
+            return {"success": True, "action": sess_act, "message": f"Session control action '{sess_act}' executed."}
+
+        elif tool in ["control_system"]:
+            act = str(args.get("action", "")).lower().strip()
+            val = str(args.get("value", "")).strip()
+            digits = re.findall(r"\d+", val)
+            num = int(digits[0]) if digits else 50
+
+            if act == "volume":
+                return await self.dispatch_tool("set_system_volume", {"volume": num})
+            elif act == "brightness":
+                return await self.dispatch_tool("set_display_brightness", {"brightness": num})
+            elif act == "power_profile":
+                prof = "performance" if "perf" in val.lower() else ("power-saver" if "save" in val.lower() else "balanced")
+                return await self.dispatch_tool("set_power_profile", {"profile": prof})
+            elif act in ["power_action", "power"]:
+                p_act = val.lower() if val.lower() in ["lock", "sleep", "reboot", "shutdown"] else "lock"
+                return await self.dispatch_tool("system_power_action", {"action": p_act})
+            elif act in ["media", "playback"]:
+                m_act = val.lower() if val.lower() in ["play", "pause", "toggle", "next", "previous", "stop"] else "toggle"
+                return await self.dispatch_tool("control_media_playback", {"action": m_act})
+            else:
+                return {"success": False, "error": f"Unknown system control action: {act}"}
 
         # ─── BROWSER & TAB CONTROL ───────────────────────────────────────────
         elif tool in ["browser_control", "tab_control"]:
@@ -731,9 +754,28 @@ class ActuatorDispatcher:
             if action == "list":
                 return await self.execute_linux_command("systemctl list-units --type=service --state=running --no-pager | head -40")
             elif unit:
-                res = await self.execute_cpp_worker("service_ctrl", [f"--action={action}", f"--unit={unit}"])
+                unit_clean = unit.lower().strip()
+                unit_map = {
+                    "hermes": "hermes-gateway.service",
+                    "hermes.service": "hermes-gateway.service",
+                    "openclaw": "openclaw-gateway.service",
+                    "openclaw.service": "openclaw-gateway.service",
+                    "friday": "friday-gateway.service",
+                    "friday.service": "friday-gateway.service",
+                }
+                resolved_unit = unit_map.get(unit_clean, unit)
+                is_user_unit = resolved_unit in ["hermes-gateway.service", "openclaw-gateway.service", "friday-gateway.service"]
+                if is_user_unit:
+                    return await self.execute_linux_command(f"systemctl --user {shlex.quote(str(action))} {shlex.quote(str(resolved_unit))} --no-pager 2>&1 | head -30")
+
+                res = await self.execute_cpp_worker("service_ctrl", [f"--action={action}", f"--unit={resolved_unit}"])
                 if not res.get("success"):
-                    return await self.execute_linux_command(f"systemctl {shlex.quote(str(action))} {shlex.quote(str(unit))} --no-pager 2>&1 | head -30")
+                    cmd_res = await self.execute_linux_command(f"systemctl {shlex.quote(str(action))} {shlex.quote(str(resolved_unit))} --no-pager 2>&1 | head -30")
+                    if "not found" in str(cmd_res).lower() or "failed" in str(cmd_res).lower():
+                        user_res = await self.execute_linux_command(f"systemctl --user {shlex.quote(str(action))} {shlex.quote(str(resolved_unit))} --no-pager 2>&1 | head -30")
+                        if "not found" not in str(user_res).lower():
+                            return user_res
+                    return cmd_res
                 return res
             return {"success": False, "error": "Provide a unit name for service management"}
 
@@ -1292,12 +1334,15 @@ author: F.R.I.D.A.Y. Capability Forge
             {"name": "get_network_connections", "description": "List active sockets, open TCP/UDP ports.", "parameters": {"type": "OBJECT", "properties": {"filter": {"type": "STRING", "description": "Filter", "enum": ["all", "listening", "established", "tcp", "udp"]}, "limit": {"type": "INTEGER", "description": "Max (default 40)"}}, "required": []}},
             {"name": "get_environment_info", "description": "Get username, home, shell, desktop session, timezone, hostname.", "parameters": {"type": "OBJECT", "properties": {}, "required": []}},
             # Vision & Camera Control
+            {"name": "toggle_vision", "description": "Activate, switch, or stop visual input feeds (desktop screen sharing, hardware camera, or flipping front/back camera). Call this whenever user asks to share screen, show screen, look at screen/code, turn on/off camera, switch to webcam, switch to rear/back camera, switch to front/selfie camera, flip camera, or stop vision feeds.", "parameters": {"type": "OBJECT", "properties": {"mode": {"type": "STRING", "description": "The desired vision mode: 'screen', 'camera', 'back_camera', 'front_camera', 'flip_camera', 'off'", "enum": ["screen", "camera", "back_camera", "front_camera", "flip_camera", "off"]}}, "required": ["mode"]}},
             {"name": "control_vision_mode", "description": "Control live vision: 'screen' for screen sharing, 'camera' for webcam, 'off' to stop. Use when user says 'share screen', 'turn on camera', 'look at my screen', 'see me'.", "parameters": {"type": "OBJECT", "properties": {"mode": {"type": "STRING", "description": "Mode", "enum": ["screen", "camera", "off"]}, "action": {"type": "STRING", "description": "Action", "enum": ["start", "stop", "toggle"]}}, "required": ["mode"]}},
             {"name": "start_screen_sharing", "description": "Activate screen sharing. Use when user says 'share my screen' or 'look at my screen'.", "parameters": {"type": "OBJECT", "properties": {}, "required": []}},
             {"name": "stop_screen_sharing", "description": "Stop screen sharing.", "parameters": {"type": "OBJECT", "properties": {}, "required": []}},
             {"name": "start_camera_vision", "description": "Activate webcam. Use when user says 'turn on camera' or 'look at me'.", "parameters": {"type": "OBJECT", "properties": {}, "required": []}},
             {"name": "stop_camera_vision", "description": "Turn off webcam.", "parameters": {"type": "OBJECT", "properties": {}, "required": []}},
             {"name": "stop_all_vision", "description": "Stop all screen sharing and camera streams.", "parameters": {"type": "OBJECT", "properties": {}, "required": []}},
+            {"name": "control_session", "description": "Controls the active voice assistant session state: disconnect, mute, or unmute.", "parameters": {"type": "OBJECT", "properties": {"action": {"type": "STRING", "description": "Action: 'disconnect', 'mute', 'unmute'", "enum": ["disconnect", "mute", "unmute"]}}, "required": ["action"]}},
+            {"name": "control_system", "description": "Instantly control Linux OS settings: set audio volume, adjust screen brightness, switch power profile, trigger power actions (lock/sleep/reboot/shutdown), or control media playback (play/pause/next/prev).", "parameters": {"type": "OBJECT", "properties": {"action": {"type": "STRING", "description": "Action: 'volume', 'brightness', 'power_profile', 'power_action', 'media'"}, "value": {"type": "STRING", "description": "Value: e.g. '50%', '80%', 'lock', 'sleep', 'play', 'pause'"}}, "required": ["action", "value"]}},
             # Desktop / Computer Use
             {"name": "desktop_control", "description": "Computer use: list/focus/close windows, close browser tabs, click mouse, move cursor, scroll, type text, send hotkeys, screenshot.", "parameters": {"type": "OBJECT", "properties": {"action": {"type": "STRING", "description": "Action", "enum": ["env", "list_windows", "focus_window", "close_window", "close_tab", "close_all_tabs", "new_tab", "next_tab", "previous_tab", "reload_tab", "click", "move", "scroll", "type_text", "hotkey", "screenshot", "launch_app", "close_app"]}, "target": {"type": "STRING", "description": "Window, app name, or tab name (e.g. 'YouTube', 'gnome-text-editor', 'chrome')"}, "x": {"type": "INTEGER", "description": "X coord"}, "y": {"type": "INTEGER", "description": "Y coord"}, "button": {"type": "STRING", "description": "Button", "enum": ["left", "right", "middle"]}, "count": {"type": "INTEGER", "description": "Clicks"}, "dx": {"type": "INTEGER", "description": "H-scroll"}, "dy": {"type": "INTEGER", "description": "V-scroll"}, "text": {"type": "STRING", "description": "Text to type"}, "combo": {"type": "STRING", "description": "Key combo"}, "path": {"type": "STRING", "description": "Screenshot path"}}, "required": ["action"]}},
             {"name": "browser_control", "description": "Direct browser control: close active tab, close all tabs/browser, open new tab/URL, switch tabs, reload, reopen tab.", "parameters": {"type": "OBJECT", "properties": {"action": {"type": "STRING", "description": "Action", "enum": ["close_tab", "close_all_tabs", "new_tab", "next_tab", "previous_tab", "reload_tab", "reopen_closed_tab"]}, "target": {"type": "STRING", "description": "Tab name or URL"}}, "required": ["action"]}},

@@ -198,7 +198,18 @@ class DualStoreMemory:
         return self._cached_snapshot
 
     def get_vault_status(self) -> Dict[str, Any]:
-        return self._fm.status()
+        vault_st = self._fm.vault.get_status()
+        today = vault_st.get("today", "")
+        return {
+            "vault_root": vault_st.get("vault_root", ""),
+            "status": "connected",
+            "today_conversation_file": f"conversations/{today}.md",
+            "total_facts_indexed": vault_st.get("total_facts", 0),
+            "total_skills_indexed": len(self.get_vault_skills_summary().splitlines()) if self.get_vault_skills_summary() else 0,
+            "total_conversations_logged": vault_st.get("total_conversations", 0),
+            **vault_st,
+            "full_status": self._fm.status(),
+        }
 
 
 # ─── Singleton (backward-compatible export) ──────────────────────────────

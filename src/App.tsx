@@ -728,9 +728,10 @@ export default function App() {
             setCurrentPartialAgentText('');
             setActiveResearch((prev) => ({ ...prev, isSearching: false }));
           } else if (msg.type === 'tool_call') {
-            console.log('Received Live Tool Call from AI:', msg.name, msg.args);
-            if (msg.name === 'toggle_vision') {
-              const mode = msg.args?.mode?.toLowerCase();
+            const toolName = (msg.name || msg.toolName || '').toLowerCase();
+            console.log('Received Live Tool Call from AI:', toolName, msg.args);
+            if (toolName === 'toggle_vision' || toolName === 'control_vision_mode') {
+              const mode = (msg.args?.mode || msg.args?.action || '').toLowerCase();
               if (mode === 'screen') {
                 requestScreenShare();
               } else if (mode === 'camera') {
@@ -741,12 +742,23 @@ export default function App() {
                 startCameraFeed('user');
               } else if (mode === 'flip_camera') {
                 toggleFacingMode();
-              } else if (mode === 'off') {
+              } else if (mode === 'off' || mode === 'stop') {
                 stopCameraFeed();
                 stopScreenShare();
               }
-            } else if (msg.name === 'control_session') {
-              const action = msg.args?.action?.toLowerCase();
+            } else if (toolName === 'start_camera_vision') {
+              startCameraFeed();
+            } else if (toolName === 'stop_camera_vision') {
+              stopCameraFeed();
+            } else if (toolName === 'start_screen_sharing') {
+              requestScreenShare();
+            } else if (toolName === 'stop_screen_sharing') {
+              stopScreenShare();
+            } else if (toolName === 'stop_all_vision') {
+              stopCameraFeed();
+              stopScreenShare();
+            } else if (toolName === 'control_session') {
+              const action = (msg.args?.action || '').toLowerCase();
               if (action === 'disconnect') {
                 disconnectSession();
               } else if (action === 'mute') {
@@ -756,6 +768,18 @@ export default function App() {
                 setIsMuted(false);
                 streamerRef.current?.setMute(false);
               }
+            }
+          } else if (msg.type === 'vision_control') {
+            console.log('Received Live Vision Control Event:', msg);
+            const mode = (msg.mode || '').toLowerCase();
+            const action = (msg.action || '').toLowerCase();
+            if (action === 'stop' || mode === 'off' || action === 'stop_all') {
+              stopCameraFeed();
+              stopScreenShare();
+            } else if (mode === 'screen' || action === 'start_screen') {
+              requestScreenShare();
+            } else if (mode === 'camera' || action === 'start_camera') {
+              startCameraFeed();
             }
           } else if (msg.type === 'task_started') {
             console.log('Parallel Background Task started:', msg.task);

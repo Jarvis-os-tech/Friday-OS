@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 
 from .models import TelegramMessage
 from .protocol import ag_ui_bridge, AGUIEventType
+from .providers import llm_manager
 
 log = logging.getLogger("friday.telegram.brain")
 
@@ -44,7 +45,13 @@ class FridayBrain:
         if not self._brain_url.startswith("http"):
             self._brain_url = f"http://{self._brain_url}"
         
-        self._omniroute_url = os.getenv("OMNIROUTE_URL", "http://127.0.0.1:20128/v1").rstrip("/")
+        self._llm_manager = llm_manager
+        self._omniroute_url = (
+            os.getenv("OMNIROUTE_BASE_URL")
+            or os.getenv("OMNIROUTE_URL")
+            or "http://127.0.0.1:20128/v1"
+        ).rstrip("/")
+        self._omniroute_api_key = os.getenv("OMNIROUTE_API_KEY", "").strip().strip("\"'")
         self._omniroute_model = os.getenv("OMNIROUTE_MODEL", "auto/best-coding")
 
         self._gemini_api_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip().strip("\"'")
@@ -791,8 +798,35 @@ class FridayBrain:
             },
         ]
 
-    async def _run_omniroute_ai_turn(self, text: str, chat_id: str) -> Optional[str]:
-        """Execute turn using local Omniroute / Hermes Brain with full function calling."""
+    def handle_model_command(self, args: str) -> str:
+        """Handle /model and /models commands for dynamic LLM switching."""
+        parts = args.strip().split()
+        if not parts:
+            return self._llm_manager.get_status_card()
+
+        if len(parts) == 1:
+            val = parts[0]
+            if val.lower() in self._llm_manager.get_providers():
+                ok, msg = self._llm_manager.set_provider(val)
+                return msg
+            else:
+                ok, msg = self._llm_manager.set_model(val)
+                return msg
+        else:
+            p_name, m_name = parts[0], parts[1]
+            ok, msg = self._llm_manager.set_provider_and_model(p_name, m_name)
+            return msg
+
+    def handle_provider_command(self, args: str) -> str:
+        """Handle /provider and /providers commands for switching LLM provider."""
+        target = args.strip()
+        if not target:
+            return self._llm_manager.get_status_card()
+        ok, msg = self._llm_manager.set_provider(target)
+        return msg
+
+    async def _run_omniroute_ai_turn(self, text: str, chat_id: str, model: Optional[str] = None) -> Optional[str]:
+        """Execute turn using local Omniroute Gateway with full function calling and Bearer Auth."""
         system_instruction = (
             "You are Friday, Gopi's sovereign AI assistant and 24/7 personal manager on Linux. "
             "You have direct control over host actuators and specialist agents: "
@@ -807,15 +841,24 @@ class FridayBrain:
             {"role": "user", "content": text},
         ]
 
+        active_p = self._llm_manager.get_active_provider()
+        base_url = (active_p.base_url if active_p.name == "omniroute" else self._omniroute_url).rstrip("/")
+        api_key = active_p.api_key if active_p.name == "omniroute" else self._omniroute_api_key
+        target_model = model or (active_p.default_model if active_p.name == "omniroute" else self._omniroute_model)
+
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
         try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 payload = {
-                    "model": self._omniroute_model,
+                    "model": target_model,
                     "messages": messages,
                     "tools": tools,
                     "temperature": 0.3,
                 }
-                resp = await client.post(f"{self._omniroute_url}/chat/completions", json=payload)
+                resp = await client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
                 if resp.status_code != 200:
                     log.warning(f"Omniroute returned HTTP {resp.status_code}: {resp.text[:200]}")
                     return None
@@ -851,9 +894,10 @@ class FridayBrain:
 
                 # Second turn for final synthesis
                 followup_resp = await client.post(
-                    f"{self._omniroute_url}/chat/completions",
-                    json={"model": self._omniroute_model, "messages": messages, "temperature": 0.3},
-                    timeout=45.0
+                    f"{base_url}/chat/completions",
+                    json={"model": target_model, "messages": messages, "temperature": 0.3},
+                    headers=headers,
+                    timeout=60.0
                 )
                 if followup_resp.status_code == 200:
                     final_data = followup_resp.json()
@@ -922,6 +966,10 @@ class FridayBrain:
 
             if cmd in ("/status", "/health", "/telemetry"):
                 return await self.get_system_status(), None
+            elif cmd in ("/model", "/models"):
+                return self.handle_model_command(args), None
+            elif cmd in ("/provider", "/providers"):
+                return self.handle_provider_command(args), None
             elif cmd in ("/today", "/agenda", "/schedule"):
                 return await self.get_agenda_report(), None
             elif cmd in ("/code", "/prime"):
@@ -960,27 +1008,40 @@ class FridayBrain:
                     "🤖 **Friday OS — Sovereign Gateway**\n\n"
                     "I am Friday, your autonomous AI Operating System & Manager.\n"
                     "Direct natural language control is active across all tools & agents.\n\n"
+                    "**Model & Provider Control:**\n"
+                    "• `/model` — View active provider, model & presets\n"
+                    "• `/model <name>` — Switch model (e.g. `/model deepseek-r1`)\n"
+                    "• `/provider <name>` — Switch provider (e.g. `/provider omniroute` or `gemini`)\n\n"
                     "**Specialist Fleet:**\n"
-                    "• **Prime Agent:** Coding, engineering, tests & scripts\n"
-                    "• **Hermes Intelligence:** Deep research, Obsidian vault & multi-turn reasoning\n"
-                    "• **OpenClaw Gateway:** Workspace tools & environment actions\n"
-                    "• **Ultron Engine:** OS optimization, kernel telemetry & thermals\n\n"
+                    "• **Prime Agent:** Coding, engineering, tests & scripts (`/code`)\n"
+                    "• **Hermes Intelligence:** Deep research, Obsidian vault & multi-turn reasoning (`/task`)\n"
+                    "• **OpenClaw Gateway:** Workspace tools & environment actions (`/openclaw`)\n"
+                    "• **Ultron Engine:** OS optimization, kernel telemetry & thermals (`/boost`)\n\n"
                     "**Direct Control Examples:**\n"
                     "• `git status` or `df -h` — Runs host terminal command\n"
                     "• `take a screenshot` — Captures desktop screen\n"
-                    "• `write a python script to...` — Delegates to Prime Agent\n"
-                    "• `research latest developments in...` — Delegates to Hermes\n"
+                    "• `switch model to deepseek-r1` — Dynamically changes LLM\n"
                     "• `check system status` — Compiles 24/7 telemetry"
                 ), None
 
         # 2. Direct Natural Language Intent Routing (No /commands required)
 
-        # A. Screenshot / Display Capture
+        # A. Model & Provider Management Intents
+        if any(p in lower_t for p in ["show model", "show provider", "current model", "active model", "which model", "what model are you using", "what model"]):
+            return self.handle_model_command(""), None
+        if lower_t.startswith(("switch model to ", "change model to ", "set model to ", "use model ")):
+            m_target = text.split("to ", 1)[-1] if "to " in lower_t else text.split("model ", 1)[-1]
+            return self.handle_model_command(m_target.strip()), None
+        if lower_t.startswith(("switch provider to ", "change provider to ", "set provider to ", "use provider ")):
+            p_target = text.split("to ", 1)[-1] if "to " in lower_t else text.split("provider ", 1)[-1]
+            return self.handle_provider_command(p_target.strip()), None
+
+        # B. Screenshot / Display Capture
         if any(p in lower_t for p in ["take a screenshot", "show my screen", "capture screen", "screenshot", "screen capture"]):
             img_path, summary = await self.execute_screenshot()
             return summary, img_path
 
-        # B. Direct Terminal / Bash Execution
+        # C. Direct Terminal / Bash Execution
         # Common shell command prefixes or explicit run/exec phrases
         shell_prefixes = (
             "git ", "npm ", "pnpm ", "cargo ", "python ", "python3 ", "node ", "docker ",
@@ -995,29 +1056,29 @@ class FridayBrain:
             cmd_part = text.split(":", 1)[-1].strip() if ":" in text else text.split(" ", 2)[-1].strip()
             return await self.execute_shell_command(cmd_part), None
 
-        # C. System Telemetry & Status
+        # D. System Telemetry & Status
         if lower_t in ("status", "system status", "health", "check status", "telemetry", "how is the system", "how is system", "check telemetry", "fleet status"):
             return await self.get_system_status(), None
 
-        # D. Agenda & Daily Schedule
+        # E. Agenda & Daily Schedule
         if lower_t in ("agenda", "today", "today's agenda", "today agenda", "my schedule", "what are my tasks", "today's tasks", "tasks today"):
             return await self.get_agenda_report(), None
 
-        # E. Ultron System Boost / RAM Reclamation
+        # F. Ultron System Boost / RAM Reclamation
         if any(p in lower_t for p in ["boost system", "ultron boost", "free ram", "clear caches", "drop caches", "optimize ram", "boost performance"]):
             return await self.execute_ultron_boost(), None
 
-        # F. Reminders
+        # G. Reminders
         if lower_t.startswith(("remind me to ", "set reminder: ", "set reminder ", "remind me: ")):
             rem_text = text.split("to ", 1)[-1] if "to " in lower_t else (text.split(":", 1)[-1] if ":" in text else text.split(" ", 2)[-1])
             return await self.set_reminder(rem_text), None
 
-        # G. Memory Recall
+        # H. Memory Recall
         if lower_t.startswith(("recall ", "search memory for ", "what do you remember about ", "memory search ")):
             query_text = text.split("for ", 1)[-1] if "for " in lower_t else (text.split("about ", 1)[-1] if "about " in lower_t else text.split(" ", 1)[-1])
             return await self.recall_memory(query_text), None
 
-        # H. Volume & Brightness
+        # I. Volume & Brightness
         if lower_t in ("mute", "unmute"):
             return await self.set_volume(lower_t), None
         if lower_t.startswith(("set volume to ", "volume to ", "volume ")):
@@ -1027,48 +1088,86 @@ class FridayBrain:
             bri_val = lower_t.split("to ", 1)[-1] if "to " in lower_t else lower_t.split("brightness ", 1)[-1]
             return await self.set_brightness(bri_val), None
 
-        # I. Prime Agent Software Engineering Routing
+        # J. Prime Agent Software Engineering Routing
         if lower_t.startswith(("write code for ", "build a ", "create a script ", "implement ", "fix bug in ", "write python code ", "write typescript code ", "code: ")):
             code_prompt = text.split(":", 1)[-1].strip() if lower_t.startswith("code:") else text
             return await self.execute_code_task(code_prompt, chat_id), None
 
-        # J. Hermes Intelligence Research Routing
+        # K. Hermes Intelligence Research Routing
         if lower_t.startswith(("research ", "deep dive into ", "investigate ", "search papers on ", "explain in detail ", "task: ", "hermes: ")):
             task_prompt = text.split(":", 1)[-1].strip() if (lower_t.startswith("task:") or lower_t.startswith("hermes:")) else text
             return await self.execute_hermes_task(task_prompt, chat_id), None
 
-        # K. OpenClaw Workspace Routing
+        # L. OpenClaw Workspace Routing
         if lower_t.startswith(("openclaw: ", "openclaw ", "claw: ", "workspace task: ")):
             claw_prompt = text.split(":", 1)[-1].strip() if ":" in text else text.split(" ", 1)[-1]
             return await self.execute_openclaw_task(claw_prompt, chat_id), None
 
-        # 3. Multi-Tier Autonomous AI Turn with Fallback Ladder
-        # Tier 1: Local Omniroute Gateway (port 20128) - auto/best-coding with autonomous tool loop
-        reply = await self._run_omniroute_ai_turn(text, chat_id)
-        if reply:
-            return reply, None
+        # 3. Dynamic Multi-Tier AI Turn with Fallback Ladder
+        active_p = self._llm_manager.get_active_provider()
+        active_m = self._llm_manager.get_active_model()
 
-        # Tier 2: Hermes CLI Headless Engine
-        reply = await self._run_hermes_cli_turn(text)
-        if reply:
-            return reply, None
+        if active_p.name == "omniroute":
+            # Priority 1: Omniroute Gateway with tools
+            reply = await self._run_omniroute_ai_turn(text, chat_id, model=active_m)
+            if reply:
+                return reply, None
 
-        # Tier 3: Direct Google Gemini API with fallback ladder
-        reply = await self._fallback_gemini(text)
-        if reply and not reply.startswith("❌"):
-            return reply, None
+            # Fallback 1: Hermes CLI Headless
+            reply = await self._run_hermes_cli_turn(text)
+            if reply:
+                return reply, None
 
-        # Tier 4: Direct Groq API Fallback
-        reply = await self._fallback_groq(text)
-        if reply:
-            return reply, None
+            # Fallback 2: Gemini Direct
+            reply = await self._fallback_gemini(text)
+            if reply and not reply.startswith("❌"):
+                return reply, None
+
+            # Fallback 3: Groq Direct
+            reply = await self._fallback_groq(text)
+            if reply:
+                return reply, None
+
+        elif active_p.name == "gemini":
+            # Priority 1: Direct Google Gemini API
+            reply = await self._fallback_gemini(text, model=active_m)
+            if reply and not reply.startswith("❌"):
+                return reply, None
+
+            # Fallback 1: Omniroute
+            reply = await self._run_omniroute_ai_turn(text, chat_id)
+            if reply:
+                return reply, None
+
+            # Fallback 2: Groq Direct
+            reply = await self._fallback_groq(text)
+            if reply:
+                return reply, None
+
+        elif active_p.name == "groq":
+            # Priority 1: Direct Groq Cloud API
+            reply = await self._fallback_groq(text, model=active_m)
+            if reply:
+                return reply, None
+
+            # Fallback 1: Omniroute
+            reply = await self._run_omniroute_ai_turn(text, chat_id)
+            if reply:
+                return reply, None
+
+            # Fallback 2: Gemini Direct
+            reply = await self._fallback_gemini(text)
+            if reply and not reply.startswith("❌"):
+                return reply, None
 
         return "I am online, Boss. All local actuators and specialist agents are standing by.", None
 
-    async def _fallback_groq(self, text: str) -> Optional[str]:
-        """Execute conversational fallback turn via Groq Cloud API if configured."""
+    async def _fallback_groq(self, text: str, model: Optional[str] = None) -> Optional[str]:
+        """Execute conversational turn via Groq Cloud API if configured."""
         if not self._groq_api_key:
             return None
+
+        target_model = model or "llama-3.3-70b-versatile"
 
         try:
             async with httpx.AsyncClient(timeout=25.0) as client:
@@ -1076,7 +1175,7 @@ class FridayBrain:
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {self._groq_api_key}", "Content-Type": "application/json"},
                     json={
-                        "model": "llama-3.3-70b-versatile",
+                        "model": target_model,
                         "messages": [
                             {"role": "system", "content": "You are Friday, Gopi's sovereign AI assistant. Be direct, concise, and structured."},
                             {"role": "user", "content": text}
@@ -1088,10 +1187,10 @@ class FridayBrain:
                     data = resp.json()
                     return (data.get("choices") or [{}])[0].get("message", {}).get("content")
         except Exception as e:
-            log.warning(f"Groq fallback failed: {e}")
+            log.warning(f"Groq turn/fallback failed: {e}")
         return None
 
-    async def _fallback_gemini(self, text: str) -> str:
+    async def _fallback_gemini(self, text: str, model: Optional[str] = None) -> str:
         """Execute conversational turn via Google Gemini with fallback model ladder."""
         if not self._gemini_api_key:
             return "❌ GEMINI_API_KEY is not configured in .env."
@@ -1103,7 +1202,8 @@ class FridayBrain:
             "You have a specialist agent fleet at your command: Prime Agent (coding), Hermes (deep research), OpenClaw (workspace tools), and Ultron (Security & OS diagnostics)."
         )
 
-        candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        candidate_models = [model] if model else ["gemini-3.7-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        candidate_models = [m for m in candidate_models if m]
 
         async with httpx.AsyncClient(timeout=45.0) as client:
             for model_name in candidate_models:

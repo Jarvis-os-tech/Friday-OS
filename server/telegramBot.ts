@@ -34,8 +34,8 @@ import { runUltronSystemAction } from "./ultronBridge.js";
 
 // ── Configuration ────────────────────────────────────────────────
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const TELEGRAM_API_BASE = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const getBotToken = () => (process.env.TELEGRAM_BOT_TOKEN || "").trim();
+const getApiBase = () => `https://api.telegram.org/bot${getBotToken()}`;
 const POLL_INTERVAL_MS = 3000; // 3 seconds between getUpdates calls
 
 // ── State ────────────────────────────────────────────────────────
@@ -81,6 +81,150 @@ function parseCommand(text: string, chatId: number, userId: number): ParsedComma
   }
 
   return { command: "chat", args: [trimmed], rawText: trimmed, chatId, userId };
+}
+
+interface LlmConfig {
+  activeProvider: string;
+  activeModel: string;
+}
+
+const PROVIDERS_PRESETS: Record<string, { displayName: string; defaultModel: string; models: string[]; baseUrl?: string }> = {
+  omniroute: {
+    displayName: "Omniroute Gateway",
+    defaultModel: "auto/best-coding",
+    models: ["auto/best-coding", "auto/reasoning", "deepseek-r1", "deepseek-v3", "claude-3-7-sonnet", "gpt-4o", "gemini-2.5-flash", "qwen-2.5-coder-32b"],
+    baseUrl: process.env.OMNIROUTE_BASE_URL || process.env.OMNIROUTE_URL || "http://127.0.0.1:20128/v1",
+  },
+  gemini: {
+    displayName: "Google Gemini",
+    defaultModel: "gemini-3.7-flash",
+    models: ["gemini-3.7-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"],
+  },
+  groq: {
+    displayName: "Groq Cloud",
+    defaultModel: "llama-3.3-70b-versatile",
+    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it", "deepseek-r1-distill-llama-70b"],
+  },
+};
+
+async function getLlmConfig(): Promise<LlmConfig> {
+  let provider = (process.env.ACTIVE_LLM_PROVIDER || "omniroute").toLowerCase();
+  let model = process.env.ACTIVE_LLM_MODEL || "";
+
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const cfgPath = path.resolve(process.cwd(), "data", "llm_config.json");
+    if (fs.existsSync(cfgPath)) {
+      const data = JSON.parse(fs.readFileSync(cfgPath, "utf-8"));
+      if (data.active_provider) provider = data.active_provider.toLowerCase();
+      if (data.active_model) model = data.active_model;
+    }
+  } catch {}
+
+  if (!PROVIDERS_PRESETS[provider]) {
+    provider = "omniroute";
+  }
+  if (!model) {
+    model = PROVIDERS_PRESETS[provider]?.defaultModel || "auto/best-coding";
+  }
+
+  return { activeProvider: provider, activeModel: model };
+}
+
+async function saveLlmConfig(provider: string, model: string): Promise<void> {
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const dir = path.resolve(process.cwd(), "data");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const cfgPath = path.resolve(dir, "llm_config.json");
+    fs.writeFileSync(cfgPath, JSON.stringify({ active_provider: provider, active_model: model, updated_at: Date.now() }, null, 2), "utf-8");
+  } catch (e) {
+    console.error("[TelegramBot] Failed to save LLM config:", e);
+  }
+}
+
+async function handleModelCommand(chatId: number, args: string[]): Promise<void> {
+  const cfg = await getLlmConfig();
+  if (args.length === 0) {
+    let msg = `🧠 *Friday OS — LLM & Provider Configuration*\n\n`;
+    msg += `🟢 *Active Provider:* \`${cfg.activeProvider}\` (${PROVIDERS_PRESETS[cfg.activeProvider]?.displayName || cfg.activeProvider})\n`;
+    msg += `⚡ *Active Model:* \`${cfg.activeModel}\`\n`;
+    const pInfo = PROVIDERS_PRESETS[cfg.activeProvider];
+    if (pInfo?.baseUrl && cfg.activeProvider === "omniroute") {
+      msg += `🌐 *Endpoint:* \`${pInfo.baseUrl}\`\n`;
+    }
+    msg += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `📋 *Available Providers & Preset Models:*\n\n`;
+
+    for (const [key, p] of Object.entries(PROVIDERS_PRESETS)) {
+      const isCur = key === cfg.activeProvider ? " 👈 *(Active)*" : "";
+      msg += `🟢 *${p.displayName}* (\`${key}\`)${isCur}\n`;
+      if (p.baseUrl && key === "omniroute") {
+        msg += `   • URL: \`${p.baseUrl}\`\n`;
+      }
+      msg += `   • Models: ${p.models.slice(0, 5).map((m) => `\`${m}\``).join(", ")}\n\n`;
+    }
+
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `💡 *How to switch:*\n`;
+    msg += `• \`/model <model_name>\` — Switch model on current provider\n`;
+    msg += `• \`/model <provider> <model>\` — e.g. \`/model omniroute deepseek-r1\`\n`;
+    msg += `• \`/provider <name>\` — e.g. \`/provider omniroute\` or \`/provider gemini\``;
+
+    await sendTelegramMessage(msg, chatId);
+    return;
+  }
+
+  let targetProvider = cfg.activeProvider;
+  let targetModel = args[0];
+
+  if (args.length >= 2) {
+    const pCandidate = args[0].toLowerCase();
+    if (PROVIDERS_PRESETS[pCandidate]) {
+      targetProvider = pCandidate;
+      targetModel = args[1];
+    }
+  } else {
+    // If single argument is a known provider name
+    const pCandidate = args[0].toLowerCase();
+    if (PROVIDERS_PRESETS[pCandidate]) {
+      targetProvider = pCandidate;
+      targetModel = PROVIDERS_PRESETS[pCandidate].defaultModel;
+    } else {
+      // Auto-detect if model belongs to another provider
+      for (const [pKey, pVal] of Object.entries(PROVIDERS_PRESETS)) {
+        if (pVal.models.includes(targetModel)) {
+          targetProvider = pKey;
+          break;
+        }
+      }
+    }
+  }
+
+  await saveLlmConfig(targetProvider, targetModel);
+  const pName = PROVIDERS_PRESETS[targetProvider]?.displayName || targetProvider;
+  await sendTelegramMessage(`✅ *Active Model Updated*\n\n• **Provider**: ${pName} (\`${targetProvider}\`)\n• **Model**: \`${targetModel}\``, chatId);
+}
+
+async function handleProviderCommand(chatId: number, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    await handleModelCommand(chatId, []);
+    return;
+  }
+
+  const target = args[0].toLowerCase();
+  if (!PROVIDERS_PRESETS[target]) {
+    const valid = Object.keys(PROVIDERS_PRESETS).map((k) => `\`${k}\``).join(", ");
+    await sendTelegramMessage(`❌ Unknown provider \`${target}\`. Available: ${valid}`, chatId);
+    return;
+  }
+
+  const defaultModel = PROVIDERS_PRESETS[target].defaultModel;
+  await saveLlmConfig(target, defaultModel);
+  const pName = PROVIDERS_PRESETS[target].displayName;
+  await sendTelegramMessage(`✅ *Provider Switched*\n\n• **Provider**: ${pName} (\`${target}\`)\n• **Active Model**: \`${defaultModel}\``, chatId);
 }
 
 async function getApiKey(): Promise<string | undefined> {
@@ -173,7 +317,7 @@ async function handleAgendaCommand(chatId: number): Promise<void> {
 
     if (reminders.length === 0 && schedule.length === 0) {
       msg += "✨ *No pending tasks*. Your agenda is clear and all specialist agents are on standby.\n\nReply with `/code <task>` or `/task <prompt>` to assign work!";
-      await sendTelegramMessage(msg);
+      await sendTelegramMessage(msg, chatId);
       return;
     }
 
@@ -194,21 +338,21 @@ async function handleAgendaCommand(chatId: number): Promise<void> {
     }
 
     msg += "_I am tracking your schedule continuously._";
-    await sendTelegramMessage(msg);
+    await sendTelegramMessage(msg, chatId);
   } catch (err: any) {
     console.error("[TelegramBot] /agenda error:", err);
-    await sendTelegramMessage(`❌ Failed to fetch agenda: ${err.message}`);
+    await sendTelegramMessage(`❌ Failed to fetch agenda: ${err.message}`, chatId);
   }
 }
 
 async function handleCodeCommand(chatId: number, args: string[]): Promise<void> {
   const prompt = args.join(" ").trim();
   if (!prompt) {
-    await sendTelegramMessage("Usage: `/code <programming task>` — e.g. `/code Write a TypeScript script to fetch crypto prices`");
+    await sendTelegramMessage("Usage: `/code <programming task>` — e.g. `/code Write a TypeScript script to fetch crypto prices`", chatId);
     return;
   }
 
-  await sendTelegramMessage(`⭐️ *Prime Agent Assigned*\n\nDispatched coding task:\n"${prompt}"\n\nBuilding and testing in background...`);
+  await sendTelegramMessage(`⭐️ *Prime Agent Assigned*\n\nDispatched coding task:\n"${prompt}"\n\nBuilding and testing in background...`, chatId);
 
   try {
     const r = await execPrimeAgent(prompt);
@@ -217,25 +361,25 @@ async function handleCodeCommand(chatId: number, args: string[]): Promise<void> 
       if (r.codeSnippets && r.codeSnippets.length > 0) {
         reply += `\n\n📦 *Generated ${r.codeSnippets.length} Code Block(s)*`;
       }
-      await sendTelegramMessage(reply);
+      await sendTelegramMessage(reply, chatId);
     } else {
-      await sendTelegramMessage(`❌ Prime Agent execution notice:\n${r.error || "Failed to complete coding task."}`);
+      await sendTelegramMessage(`❌ Prime Agent execution notice:\n${r.error || "Failed to complete coding task."}`, chatId);
     }
   } catch (err: any) {
     console.error("[TelegramBot] /code error:", err);
-    await sendTelegramMessage(`❌ Coding task error: ${err.message || String(err)}`);
+    await sendTelegramMessage(`❌ Coding task error: ${err.message || String(err)}`, chatId);
   }
 }
 
 async function handleBoostCommand(chatId: number): Promise<void> {
-  await sendTelegramMessage("⚡ *Engaging Ultron for System Boost...*");
+  await sendTelegramMessage("⚡ *Engaging Ultron for System Boost...*", chatId);
   try {
     const result = await runUltronSystemAction("boost_system");
     const summary = result.speechSummary || result.data?.message || "System boosted successfully.";
-    await sendTelegramMessage(`✅ *Ultron Boost Complete*\n\n${summary}`);
+    await sendTelegramMessage(`✅ *Ultron Boost Complete*\n\n${summary}`, chatId);
   } catch (err: any) {
     console.error("[TelegramBot] /boost error:", err);
-    await sendTelegramMessage(`❌ Boost failed: ${err.message}`);
+    await sendTelegramMessage(`❌ Boost failed: ${err.message}`, chatId);
   }
 }
 
@@ -249,17 +393,17 @@ async function handleStatusCommand(chatId: number): Promise<void> {
     ]);
 
     const msg = formatSystemStatus(heartbeat, battery, thermals, telemetry);
-    await sendTelegramMessage(msg);
+    await sendTelegramMessage(msg, chatId);
   } catch (err) {
     console.error("[TelegramBot] /status error:", err);
-    await sendTelegramMessage("❌ Failed to fetch system status.");
+    await sendTelegramMessage("❌ Failed to fetch system status.", chatId);
   }
 }
 
 async function handleTaskCommand(chatId: number, args: string[]): Promise<void> {
   const prompt = args.join(" ").trim();
   if (!prompt) {
-    await sendTelegramMessage("Usage: `/task <your prompt>` — e.g. `/task Research latest developments in multi-agent systems`");
+    await sendTelegramMessage("Usage: `/task <your prompt>` — e.g. `/task Research latest developments in multi-agent systems`", chatId);
     return;
   }
 
@@ -287,23 +431,23 @@ async function handleTaskCommand(chatId: number, args: string[]): Promise<void> 
     assignedAgent = "🔹 Ultron";
   }
 
-  await sendTelegramMessage(`🚀 *Task Dispatched ⟶ ${assignedAgent}*\n\n${prompt}\n\nI will notify you when complete.`);
+  await sendTelegramMessage(`🚀 *Task Dispatched ⟶ ${assignedAgent}*\n\n${prompt}\n\nI will notify you when complete.`, chatId);
 
   try {
     if (assignedAgent.includes("Prime")) {
       const result = await execPrimeAgent(prompt);
-      await sendTelegramMessage(`✅ *Prime Agent Completed*\n\n${result.text.slice(0, 3500)}`);
+      await sendTelegramMessage(`✅ *Prime Agent Completed*\n\n${result.text.slice(0, 3500)}`, chatId);
     } else if (assignedAgent.includes("Ultron")) {
       const result = await runUltronSystemAction("deep_audit");
-      await sendTelegramMessage(`✅ *Ultron Audit Complete*\n\n${result.speechSummary || "System audit finished."}`);
+      await sendTelegramMessage(`✅ *Ultron Audit Complete*\n\n${result.speechSummary || "System audit finished."}`, chatId);
     } else {
       const result = await execHermes(prompt, { maxTurns: 12, yolo: true });
       const summary = result.text || result.raw || "Task completed (no output captured).";
-      await sendTelegramMessage(`✅ *Hermes Task Complete*\n\n${summary.slice(0, 3500)}`);
+      await sendTelegramMessage(`✅ *Hermes Task Complete*\n\n${summary.slice(0, 3500)}`, chatId);
     }
   } catch (err: any) {
     console.error("[TelegramBot] /task error:", err);
-    await sendTelegramMessage(`❌ Task failed: ${err.message || String(err)}`);
+    await sendTelegramMessage(`❌ Task failed: ${err.message || String(err)}`, chatId);
   }
 }
 
@@ -350,7 +494,7 @@ async function handleRemindCommand(chatId: number, args: string[]): Promise<void
   }
 
   if (!remindText.trim()) {
-    await sendTelegramMessage("Please provide reminder text. Usage: `/remind <text> <time>`");
+    await sendTelegramMessage("Please provide reminder text. Usage: `/remind <text> <time>`", chatId);
     return;
   }
 
@@ -362,26 +506,19 @@ async function handleRemindCommand(chatId: number, args: string[]): Promise<void
     });
 
     if (result.success) {
-      await sendTelegramMessage(`⏰ *Reminder Set*\n\n${remindText.trim()}${dueInMinutes ? ` (in ${dueInMinutes} min)` : ""}`);
+      await sendTelegramMessage(`⏰ *Reminder Set*\n\n${remindText.trim()}${dueInMinutes ? ` (in ${dueInMinutes} min)` : ""}`, chatId);
     } else {
-      await sendTelegramMessage(`❌ Failed to set reminder: ${result.data?.error || "Unknown error"}`);
+      await sendTelegramMessage(`❌ Failed to set reminder: ${result.data?.error || "Unknown error"}`, chatId);
     }
   } catch (err: any) {
     console.error("[TelegramBot] /remind error:", err);
-    await sendTelegramMessage(`❌ Reminder error: ${err.message || String(err)}`);
+    await sendTelegramMessage(`❌ Reminder error: ${err.message || String(err)}`, chatId);
   }
 }
 
 async function handleChatCommand(chatId: number, text: string): Promise<void> {
   try {
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      await sendTelegramMessage("❌ Gemini API key not configured on server.");
-      return;
-    }
-
-    const { GoogleGenAI } = await import("@google/genai");
-    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } });
+    const cfg = await getLlmConfig();
 
     const systemInstruction = `You are F.R.I.D.A.Y., Tony Stark's sophisticated AI voice partner and 24/7 personal manager.
 You are chatting with your Boss on Telegram while they are away from their PC.
@@ -395,8 +532,86 @@ Tone & Style:
 - Proactively tell the user what to do, what agenda items are pending, and suggest delegating tasks to Prime Agent or Hermes.
 - Keep responses concise, clear, and actionable on mobile.`;
 
+    // 1. Omniroute Provider
+    if (cfg.activeProvider === "omniroute") {
+      const baseUrl = (process.env.OMNIROUTE_BASE_URL || process.env.OMNIROUTE_URL || "http://127.0.0.1:20128/v1").replace(/\/$/, "");
+      const apiKey = (process.env.OMNIROUTE_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+
+      try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+        const resp = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: cfg.activeModel,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: text },
+            ],
+            temperature: 0.3,
+          }),
+        });
+
+        if (resp.ok) {
+          const data = (await resp.json()) as any;
+          const reply = data.choices?.[0]?.message?.content;
+          if (reply) {
+            await sendTelegramMessage(reply.slice(0, 4000), chatId);
+            return;
+          }
+        }
+      } catch (omniErr) {
+        console.warn("[TelegramBot] Omniroute chat turn failed, falling back to Gemini:", omniErr);
+      }
+    }
+
+    // 2. Groq Provider
+    if (cfg.activeProvider === "groq") {
+      const groqKey = (process.env.GROQ_API_KEY || process.env.qroq_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+      if (groqKey) {
+        try {
+          const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: cfg.activeModel || "llama-3.3-70b-versatile",
+              messages: [
+                { role: "system", content: systemInstruction },
+                { role: "user", content: text },
+              ],
+              temperature: 0.4,
+            }),
+          });
+          if (resp.ok) {
+            const data = (await resp.json()) as any;
+            const reply = data.choices?.[0]?.message?.content;
+            if (reply) {
+              await sendTelegramMessage(reply.slice(0, 4000), chatId);
+              return;
+            }
+          }
+        } catch (groqErr) {
+          console.warn("[TelegramBot] Groq turn failed, falling back to Gemini:", groqErr);
+        }
+      }
+    }
+
+    // 3. Gemini Provider (Direct or Fallback)
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      await sendTelegramMessage("❌ API keys not configured on server (Omniroute / Gemini).", chatId);
+      return;
+    }
+
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } });
+
+    const targetGeminiModel = cfg.activeProvider === "gemini" ? cfg.activeModel : "gemini-3.7-flash";
+
     const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+      model: targetGeminiModel,
       contents: [{ role: "user", parts: [{ text }] }],
       config: {
         systemInstruction,
@@ -406,10 +621,10 @@ Tone & Style:
     });
 
     const reply = response.text || "...";
-    await sendTelegramMessage(reply.slice(0, 4000));
+    await sendTelegramMessage(reply.slice(0, 4000), chatId);
   } catch (err: any) {
     console.error("[TelegramBot] chat error:", err);
-    await sendTelegramMessage(`❌ Chat error: ${err.message || String(err)}`);
+    await sendTelegramMessage(`❌ Chat error: ${err.message || String(err)}`, chatId);
   }
 }
 
@@ -419,6 +634,14 @@ async function dispatchCommand(parsed: ParsedCommand): Promise<void> {
   const { command, args, chatId } = parsed;
 
   switch (command) {
+    case "/model":
+    case "/models":
+      await handleModelCommand(chatId, args);
+      break;
+    case "/provider":
+    case "/providers":
+      await handleProviderCommand(chatId, args);
+      break;
     case "/agenda":
     case "/today":
       await handleAgendaCommand(chatId);
@@ -433,7 +656,7 @@ async function dispatchCommand(parsed: ParsedCommand): Promise<void> {
       await handleBoostCommand(chatId);
       break;
     case "/digest":
-      await sendTelegramMessage("🌅 *Triggering Full Daily Digest...*");
+      await sendTelegramMessage("🌅 *Triggering Full Daily Digest...*", chatId);
       await sendMorningDailyDigest(true);
       break;
     case "/status":
@@ -447,7 +670,8 @@ async function dispatchCommand(parsed: ParsedCommand): Promise<void> {
       break;
     default:
       await sendTelegramMessage(
-        `Unknown command: ${command}\n\nAvailable Commands:\n/agenda — Today's priorities & schedule\n/code <prompt> — Dispatch coding to Prime Agent\n/task <prompt> — Autonomous multi-agent task\n/boost — Ultron RAM & system boost\n/digest — Trigger morning briefing\n/status — 24/7 system health & fleet status\n/remind <text> <time> — Set reminder\nOr simply message me directly.`
+        `Unknown command: ${command}\n\nAvailable Commands:\n/model [name] — View or switch active LLM model\n/provider [name] — View or switch active LLM provider\n/agenda — Today's priorities & schedule\n/code <prompt> — Dispatch coding to Prime Agent\n/task <prompt> — Autonomous multi-agent task\n/boost — Ultron RAM & system boost\n/digest — Trigger morning briefing\n/status — 24/7 system health & fleet status\n/remind <text> <time> — Set reminder\nOr simply message me directly.`,
+        chatId
       );
   }
 }
@@ -459,7 +683,7 @@ async function pollUpdates(): Promise<void> {
   isPolling = true;
 
   try {
-    const url = `${TELEGRAM_API_BASE}/getUpdates?offset=${lastUpdateId + 1}&timeout=30&allowed_updates=["message"]`;
+    const url = `${getApiBase()}/getUpdates?offset=${lastUpdateId + 1}&timeout=30&allowed_updates=["message"]`;
     const response = await fetch(url);
     const result = await response.json();
 
@@ -521,7 +745,7 @@ export async function startTelegramBot(): Promise<void> {
   console.log(`[TelegramBot] 🤖 Connected as ${botCheck.botName}. Starting long-poll...`);
 
   try {
-    const initResp = await fetch(`${TELEGRAM_API_BASE}/getUpdates?limit=1`);
+    const initResp = await fetch(`${getApiBase()}/getUpdates?limit=1`);
     const initResult = await initResp.json();
     if (initResult.ok && initResult.result.length > 0) {
       lastUpdateId = initResult.result[0].update_id;

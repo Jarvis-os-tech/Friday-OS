@@ -494,6 +494,124 @@ async def execute_tool(req: ToolExecuteRequest):
     return result
 
 
+@app.get("/api/hermes/health")
+async def hermes_health():
+    import socket, shutil
+    hermes_bin = shutil.which("hermes") or os.path.exists(os.path.expanduser("~/.local/bin/hermes"))
+    reachable = False
+    try:
+        with socket.create_connection(("127.0.0.1", 9119), timeout=0.5):
+            reachable = True
+    except Exception:
+        pass
+
+    vault_path = os.path.join(os.getcwd(), "friday-memory")
+    return {
+        "hermes": {
+            "ok": bool(hermes_bin),
+            "version": "Hermes Agent v0.21.0",
+            "gateway": {"url": "127.0.0.1:9119", "reachable": reachable}
+        },
+        "connected": reachable,
+        "delegation": "ready" if hermes_bin else "unavailable",
+        "vault": vault_path,
+        "vaultExists": os.path.exists(vault_path)
+    }
+
+
+@app.get("/api/openclaw/health")
+async def openclaw_health():
+    import socket
+    openclaw_dir = os.path.expanduser("~/.openclaw")
+    installed = os.path.exists(openclaw_dir)
+    reachable = False
+    try:
+        with socket.create_connection(("127.0.0.1", 18789), timeout=0.5):
+            reachable = True
+    except Exception:
+        pass
+
+    return {
+        "openclaw": {
+            "ok": installed,
+            "installed": installed,
+            "configPresent": os.path.exists(os.path.join(openclaw_dir, "openclaw.json")),
+            "workspace": os.path.join(openclaw_dir, "workspace"),
+            "gatewayRunning": reachable,
+            "gatewayUrl": "http://127.0.0.1:18789",
+            "primaryModel": "omniroute/auto/coding",
+            "agentsDir": os.path.join(openclaw_dir, "agents")
+        },
+        "connected": reachable,
+        "delegation": "ready" if installed else "unavailable",
+        "workspace": os.path.join(openclaw_dir, "workspace"),
+        "model": "omniroute/auto/coding"
+    }
+
+
+@app.get("/api/openclaw/status")
+async def openclaw_status():
+    return await openclaw_health()
+
+
+@app.get("/api/llm/status")
+async def get_llm_status():
+    from core_engine.providers import llm_manager
+    active_p = llm_manager.get_active_provider()
+    active_m = llm_manager.get_active_model()
+    return {
+        "activeProvider": active_p.name,
+        "activeProviderDisplayName": active_p.display_name,
+        "activeModel": active_m,
+        "endpoint": active_p.base_url,
+        "providers": [p.to_dict() for p in llm_manager.get_providers().values()],
+    }
+
+
+@app.post("/api/llm/config")
+async def set_llm_config(data: Dict[str, Any]):
+    from core_engine.providers import llm_manager
+    provider = data.get("provider")
+    model = data.get("model")
+    if provider and model:
+        ok, msg = llm_manager.set_provider_and_model(provider, model)
+    elif provider:
+        ok, msg = llm_manager.set_provider(provider)
+    elif model:
+        ok, msg = llm_manager.set_model(model)
+    else:
+        return {"ok": False, "error": "Missing provider or model in payload"}
+    return {
+        "ok": ok,
+        "message": msg,
+        "activeProvider": llm_manager.get_active_provider().name,
+        "activeModel": llm_manager.get_active_model(),
+    }
+
+
+@app.get("/api/tasks")
+async def get_tasks():
+    return {"activeTasks": [], "completedTasks": []}
+
+
+@app.get("/api/reminders")
+async def get_reminders():
+    return {"reminders": []}
+
+
+@app.get("/api/voices")
+async def get_voices():
+    return {
+        "voices": [
+            {"id": "Puck", "name": "Puck (Energetic)", "gender": "neutral"},
+            {"id": "Charon", "name": "Charon (Deep)", "gender": "male"},
+            {"id": "Kore", "name": "Kore (Warm)", "gender": "female"},
+            {"id": "Fenrir", "name": "Fenrir (Authoritative)", "gender": "male"},
+            {"id": "Aoede", "name": "Aoede (Conversational)", "gender": "female"},
+            {"id": "Zephyr", "name": "Zephyr (Smooth)", "gender": "female"},
+        ]
+    }
+
 
 # ─── WebRTC Signaling & DataChannel Bridge ───────────────────────────────────
 
@@ -569,7 +687,9 @@ async def _broadcast_to_all_ws(event: Dict[str, Any]):
         except Exception:
             pass
 
-# Wire the broadcast callback so actuator_dispatcher vision/persona tools
+# Wire the broadcast callback so actuator_dispatcher vision/persona tools reach connected UI clients
+actuator_dispatcher.set_ws_broadcast(_broadcast_to_all_ws)
+
 VOICE_PRESETS = [
     {
         "id": "Puck",
@@ -718,12 +838,21 @@ async def websocket_live_bridge(ws: WebSocket):
                 if text:
                     await gemini_session.send_text_message(text)
 
-            # 5. Client Vision Image (Camera / Screen Share)
-            elif msg_type == "image":
-                img = data.get("image")
+            # 5. Client Vision Image / Video Frame (Camera / Screen Share)
+            elif msg_type in ("image", "video", "video_frame"):
+                img = data.get("image") or data.get("data")
                 mime = data.get("mimeType", "image/jpeg")
                 if img:
                     await gemini_session.send_realtime_image(img, mime)
+
+            elif msg_type in ("vision_source_changed", "vision_mode"):
+                raw_source = str(data.get("source", data.get("mode", "none"))).lower()
+                if raw_source in ("none", "off"):
+                    await gemini_session.send_text_message("[SYSTEM VISION STATE: Vision feed is now COMPLETELY STOPPED / DEACTIVATED. You now have NO visual input. If user asks what is on screen or camera, state that vision is currently turned off.]")
+                elif raw_source == "screen":
+                    await gemini_session.send_text_message("[SYSTEM VISION STATE: DESKTOP SCREEN SHARING is now ACTIVE. Video frames of user display are streaming. Describe only what is visibly shown.]")
+                elif raw_source in ("camera", "webcam"):
+                    await gemini_session.send_text_message("[SYSTEM VISION STATE: HARDWARE CAMERA is now ACTIVE. Video frames of webcam are streaming. Describe only what is visibly shown.]")
 
             # 6. Interruption (Voice Barge-in)
             elif msg_type in ("interrupt", "interrupted"):

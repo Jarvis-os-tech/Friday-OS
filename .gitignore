@@ -21,5 +21,6 @@ core_engine/.forge_venv/
 custom_tools/.forge_venv/
 
 # Data files
-data/*.db
-data/auth_tokens.json
+data/*.db*
+data/*.json
+!data/.gitkeep

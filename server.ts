@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import http from "http";
 import path from "path";
@@ -126,16 +127,51 @@ const PORT = Number(process.env.PORT) || 3000;
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
-// Lightweight health check
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
 // Check if API key is configured on server
 app.get("/api/config", (req, res) => {
   res.json({
     hasApiKey: Boolean(getApiKey()),
   });
+});
+
+// LLM Provider & Model Configuration
+app.get("/api/llm/status", (req, res) => {
+  let provider = (process.env.ACTIVE_LLM_PROVIDER || "omniroute").toLowerCase();
+  let model = process.env.ACTIVE_LLM_MODEL || "";
+  try {
+    const cfgPath = path.resolve(process.cwd(), "data", "llm_config.json");
+    if (fs.existsSync(cfgPath)) {
+      const data = JSON.parse(fs.readFileSync(cfgPath, "utf-8"));
+      if (data.active_provider) provider = data.active_provider.toLowerCase();
+      if (data.active_model) model = data.active_model;
+    }
+  } catch {}
+  if (!model) model = provider === "omniroute" ? "auto/best-coding" : (provider === "groq" ? "llama-3.3-70b-versatile" : "gemini-3.7-flash");
+  res.json({
+    activeProvider: provider,
+    activeModel: model,
+    endpoint: process.env.OMNIROUTE_BASE_URL || process.env.OMNIROUTE_URL || "http://127.0.0.1:20128/v1",
+  });
+});
+
+app.post("/api/llm/config", (req, res) => {
+  const { provider, model } = req.body || {};
+  try {
+    const dir = path.resolve(process.cwd(), "data");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const cfgPath = path.resolve(dir, "llm_config.json");
+    let current: any = {};
+    if (fs.existsSync(cfgPath)) {
+      try { current = JSON.parse(fs.readFileSync(cfgPath, "utf-8")); } catch {}
+    }
+    if (provider) current.active_provider = provider.toLowerCase();
+    if (model) current.active_model = model;
+    current.updated_at = Date.now();
+    fs.writeFileSync(cfgPath, JSON.stringify(current, null, 2), "utf-8");
+    res.json({ ok: true, activeProvider: current.active_provider, activeModel: current.active_model });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // Initialize GoogleGenAI client
@@ -790,10 +826,27 @@ app.get("/api/memory/profile", (req, res) => {
 });
 
 app.get("/api/memory/search", (req, res) => {
-  const q = (req.query.q as string) || "";
-  const limit = Number(req.query.limit) || 8;
-  const results = searchMemoryVault(q, limit);
-  res.json({ success: true, query: q, results });
+  try {
+    const q = (req.query.q as string) || "";
+    const dept = (req.query.dept as string) || undefined;
+    const type = (req.query.type as string) || undefined;
+    const tags = req.query.tags
+      ? Array.isArray(req.query.tags)
+        ? (req.query.tags as string[])
+        : [String(req.query.tags)]
+      : undefined;
+    const limit = Number(req.query.limit) || 8;
+
+    if (dept || type || tags) {
+      const results = searchMemory({ text: q, type, tags }, dept);
+      return res.json({ success: true, query: q, department: dept, results });
+    }
+
+    const results = searchMemoryVault(q, limit);
+    res.json({ success: true, query: q, results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/memory/note", (req, res) => {
@@ -874,22 +927,6 @@ app.post("/api/memory/department/:dept/write", async (req, res) => {
   }
 });
 
-app.get("/api/memory/search", (req, res) => {
-  try {
-    const q = (req.query.q as string) || "";
-    const dept = (req.query.dept as string) || undefined;
-    const type = (req.query.type as string) || undefined;
-    const tags = req.query.tags
-      ? Array.isArray(req.query.tags)
-        ? (req.query.tags as string[])
-        : [String(req.query.tags)]
-      : undefined;
-    const results = searchMemory({ text: q, type, tags }, dept);
-    res.json({ success: true, query: q, department: dept, results });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 
 // Reminders REST endpoints

@@ -29,6 +29,7 @@ class GeminiLiveSession:
         self.is_running = False
         self.listeners: List[Callable[[Dict[str, Any]], None]] = []
         self._greeted = False
+        self.session_resumption_handle: Optional[str] = None
 
     def add_listener(self, listener: Callable[[Dict[str, Any]], None]):
         if listener not in self.listeners:
@@ -110,7 +111,7 @@ class GeminiLiveSession:
                 },
                 "inputAudioTranscription": {},
                 "outputAudioTranscription": {},
-                "sessionResumption": {},
+                "sessionResumption": {"handle": self.session_resumption_handle} if self.session_resumption_handle else {},
                 "contextWindowCompression": {"slidingWindow": {}}
             }
         }
@@ -195,7 +196,7 @@ class GeminiLiveSession:
                     upd = data["sessionResumptionUpdate"]
                     handle = upd.get("newHandle") or upd.get("handle")
                     if handle:
-                        print(f"[GeminiLive] SessionResumptionUpdate handle stored (2h window)")
+                        self.session_resumption_handle = handle
 
                 # Transcriptions (when enabled)
                 server_content = data.get("serverContent")
@@ -266,7 +267,7 @@ class GeminiLiveSession:
                 args = call.get("args", {})
                 start_ms = time.time() * 1000
                 print(f"[GeminiLive] ⚡ Simultaneous Tool Execution: {name}({args})")
-                self._emit({"type": "tool_call", "toolName": name, "args": args})
+                self._emit({"type": "tool_call", "name": name, "toolName": name, "args": args})
 
                 try:
                     result = await actuator_dispatcher.dispatch_tool(name, args)
