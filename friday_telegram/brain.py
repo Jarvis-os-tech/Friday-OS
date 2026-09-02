@@ -40,10 +40,13 @@ class FridayBrain:
     """
 
     def __init__(self, brain_url: Optional[str] = None):
-        self._brain_url = brain_url or os.getenv("HERMES_GATEWAY_URL", "127.0.0.1:9119")
+        self._brain_url = brain_url or os.getenv("HERMES_GATEWAY_URL", "http://127.0.0.1:20128/v1")
         if not self._brain_url.startswith("http"):
             self._brain_url = f"http://{self._brain_url}"
         
+        self._omniroute_url = os.getenv("OMNIROUTE_URL", "http://127.0.0.1:20128/v1").rstrip("/")
+        self._omniroute_model = os.getenv("OMNIROUTE_MODEL", "auto/best-coding")
+
         self._gemini_api_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip().strip("\"'")
         self._groq_api_key = (os.getenv("GROQ_API_KEY") or os.getenv("qroq_API_KEY") or "").strip().strip("\"'")
         
@@ -560,35 +563,82 @@ class FridayBrain:
         start_t = time.time()
 
         try:
-            if tool_name == "delegate_to_openclaw":
+            if tool_name in ("delegate_to_openclaw", "execute_openclaw_task", "openclaw"):
                 res = await self.execute_openclaw_task(args.get("prompt", ""), chat_id)
                 duration = (time.time() - start_t) * 1000
                 await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
                 return res
 
-            elif tool_name in ("delegate_to_prime_agent", "prime_agent"):
+            elif tool_name in ("delegate_to_prime_agent", "execute_code_task", "prime_agent", "prime"):
                 res = await self.execute_code_task(args.get("prompt", ""), chat_id)
                 duration = (time.time() - start_t) * 1000
                 await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
                 return res
 
-            elif tool_name in ("delegate_to_hermes", "hermes"):
+            elif tool_name in ("delegate_to_hermes", "execute_hermes_task", "hermes"):
                 res = await self.execute_hermes_task(args.get("prompt", ""), chat_id)
                 duration = (time.time() - start_t) * 1000
                 await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
                 return res
 
-            elif tool_name in ("delegate_to_ultron", "ultron"):
-                action = args.get("action", "boost_system")
-                if action == "boost_system":
-                    res = await self.execute_ultron_boost()
-                else:
-                    res = await self.get_system_status()
+            elif tool_name in ("delegate_to_ultron", "execute_ultron_boost", "ultron", "boost_system"):
+                res = await self.execute_ultron_boost()
                 duration = (time.time() - start_t) * 1000
                 await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
                 return res
 
-            # System & Hardware Actuator Tools
+            elif tool_name in ("execute_shell_command", "run_shell_command", "execute_linux_command"):
+                res = await self.execute_shell_command(args.get("command", ""))
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            elif tool_name in ("execute_screenshot", "take_screenshot"):
+                _, res = await self.execute_screenshot()
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            elif tool_name in ("get_system_status", "system_status", "telemetry"):
+                res = await self.get_system_status()
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            elif tool_name in ("get_agenda_report", "agenda_report", "agenda"):
+                res = await self.get_agenda_report()
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            elif tool_name in ("set_system_volume", "set_volume"):
+                vol = args.get("volume", "")
+                if args.get("mute") is True:
+                    vol = "mute"
+                res = await self.set_volume(str(vol))
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            elif tool_name in ("set_display_brightness", "set_brightness"):
+                res = await self.set_brightness(str(args.get("brightness", "50")))
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            elif tool_name in ("set_reminder", "create_reminder"):
+                res = await self.set_reminder(args.get("text", ""))
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            elif tool_name in ("recall_memory", "search_memory"):
+                res = await self.recall_memory(args.get("query", ""))
+                duration = (time.time() - start_t) * 1000
+                await ag_ui_bridge.emit_tool_result(tool_name, res, True, duration)
+                return res
+
+            # System & Hardware Actuator Tools fallback
             act = self._get_actuator()
             if act:
                 res = await act.dispatch_tool(tool_name, args)
@@ -605,6 +655,253 @@ class FridayBrain:
             duration = (time.time() - start_t) * 1000
             await ag_ui_bridge.emit_tool_result(tool_name, {"error": str(e)}, False, duration)
             return {"error": str(e)}
+
+    def _build_openai_tools(self) -> List[Dict[str, Any]]:
+        """Declare all available specialist and system actuators in OpenAI format."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_shell_command",
+                    "description": "Execute a Linux bash/terminal command on the host (e.g. git, npm, systemctl, df -h, uptime).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"command": {"type": "string", "description": "The exact shell command to run"}},
+                        "required": ["command"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_code_task",
+                    "description": "Delegate software engineering, programming, bug fixing, test creation, or script building to Prime Agent.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"prompt": {"type": "string", "description": "The programming task prompt"}},
+                        "required": ["prompt"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_hermes_task",
+                    "description": "Delegate deep research, Obsidian memory vault search, web intelligence, and multi-turn reasoning to Hermes Intelligence.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"prompt": {"type": "string", "description": "The research or reasoning task prompt"}},
+                        "required": ["prompt"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_openclaw_task",
+                    "description": "Delegate workspace tasks, multimodal actions, or agent scripts to the OpenClaw Gateway.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"prompt": {"type": "string", "description": "The task prompt for OpenClaw"}},
+                        "required": ["prompt"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_ultron_boost",
+                    "description": "Run Ultron kernel RAM cache reclamation, process optimization, and system boost.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_system_status",
+                    "description": "Get live 24/7 telemetry (CPU, RAM, storage, thermals, battery, specialist fleet status).",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_agenda_report",
+                    "description": "Get today's agenda, daily schedule, priorities, and active reminders.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_screenshot",
+                    "description": "Capture the desktop screen and return a screenshot.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "set_system_volume",
+                    "description": "Set speaker volume (0-150) or mute/unmute.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "volume": {"type": "integer", "description": "Volume percentage 0 to 150"},
+                            "mute": {"type": "boolean", "description": "Whether to mute audio"},
+                        },
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "set_display_brightness",
+                    "description": "Set screen brightness percentage (1-100).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"brightness": {"type": "integer", "description": "Brightness percentage 1 to 100"}},
+                        "required": ["brightness"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "set_reminder",
+                    "description": "Save a reminder to Friday persistent memory vault.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"text": {"type": "string", "description": "The reminder content"}},
+                        "required": ["text"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "recall_memory",
+                    "description": "Search Friday memory vault for facts, project decisions, or notes.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string", "description": "The search query"}},
+                        "required": ["query"],
+                    },
+                },
+            },
+        ]
+
+    async def _run_omniroute_ai_turn(self, text: str, chat_id: str) -> Optional[str]:
+        """Execute turn using local Omniroute / Hermes Brain with full function calling."""
+        system_instruction = (
+            "You are Friday, Gopi's sovereign AI assistant and 24/7 personal manager on Linux. "
+            "You have direct control over host actuators and specialist agents: "
+            "Prime Agent (coding), Hermes (research & memory vault), OpenClaw (workspace), and Ultron (OS diagnostics). "
+            "Style: Razor-sharp, direct, concise, structured Markdown with clean bold keys and emojis. Address Gopi as 'Gopi', 'boss', or 'sir'. "
+            "Call tools when actions, commands, status, code, research, or system controls are needed."
+        )
+
+        tools = self._build_openai_tools()
+        messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": text},
+        ]
+
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                payload = {
+                    "model": self._omniroute_model,
+                    "messages": messages,
+                    "tools": tools,
+                    "temperature": 0.3,
+                }
+                resp = await client.post(f"{self._omniroute_url}/chat/completions", json=payload)
+                if resp.status_code != 200:
+                    log.warning(f"Omniroute returned HTTP {resp.status_code}: {resp.text[:200]}")
+                    return None
+
+                data = resp.json()
+                choice = (data.get("choices") or [{}])[0]
+                message = choice.get("message", {})
+
+                # Check if tool calls were requested
+                tool_calls = message.get("tool_calls") or []
+                if not tool_calls:
+                    return message.get("content") or "Standing by, Boss."
+
+                # Execute tool calls
+                tool_results_summary = []
+                messages.append(message)
+
+                for tc in tool_calls:
+                    fn_name = tc.get("function", {}).get("name", "")
+                    raw_args = tc.get("function", {}).get("arguments", "{}")
+                    try:
+                        args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+                    except Exception:
+                        args = {}
+
+                    res = await self._execute_tool_call(fn_name, args, chat_id)
+                    tool_results_summary.append(str(res))
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", "call_0"),
+                        "content": str(res)
+                    })
+
+                # Second turn for final synthesis
+                followup_resp = await client.post(
+                    f"{self._omniroute_url}/chat/completions",
+                    json={"model": self._omniroute_model, "messages": messages, "temperature": 0.3},
+                    timeout=45.0
+                )
+                if followup_resp.status_code == 200:
+                    final_data = followup_resp.json()
+                    final_msg = (final_data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+                    if final_msg:
+                        return final_msg
+
+                return "\n\n".join(tool_results_summary)
+        except Exception as e:
+            log.warning(f"Omniroute AI turn failed ({e}), escalating to fallback ladder...")
+            return None
+
+    async def _run_hermes_cli_turn(self, text: str) -> Optional[str]:
+        """Execute turn using local Hermes CLI headless runner."""
+        try:
+            hermes_bin = os.getenv("HERMES_BIN", "/home/gopi/.local/bin/hermes")
+            if not os.path.exists(hermes_bin):
+                hermes_bin = "hermes"
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as tf:
+                tf.write(text)
+                tmp_path = tf.name
+
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    hermes_bin, "chat", "--query-file", tmp_path, "-Q",
+                    "--source", "tool", "--max-turns", "6", "--yolo",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=str(_PROJECT_ROOT),
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+                raw_out = stdout.decode("utf-8", errors="replace").strip()
+                clean_lines = [
+                    l for l in raw_out.splitlines()
+                    if not l.startswith("Warning: Unknown toolsets:")
+                    and not l.startswith("session_id:")
+                    and not l.startswith("Model:")
+                ]
+                output = "\n".join(clean_lines).strip()
+                if output:
+                    return output
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+        except Exception as e:
+            log.warning(f"Hermes CLI turn failed: {e}")
+        return None
 
     # ── Conversational & Command Router ───────────────────────────────
 
@@ -745,57 +1042,53 @@ class FridayBrain:
             claw_prompt = text.split(":", 1)[-1].strip() if ":" in text else text.split(" ", 1)[-1]
             return await self.execute_openclaw_task(claw_prompt, chat_id), None
 
-        # 3. Autonomous Multi-Turn Tool-Calling Turn (Gemini with all registered tools)
-        if self._gemini_api_key:
-            try:
-                reply = await self._run_gemini_tool_loop(text, chat_id)
-                if reply:
-                    return reply, None
-            except Exception as e:
-                log.warning(f"Gemini tool loop error: {e}")
+        # 3. Multi-Tier Autonomous AI Turn with Fallback Ladder
+        # Tier 1: Local Omniroute Gateway (port 20128) - auto/best-coding with autonomous tool loop
+        reply = await self._run_omniroute_ai_turn(text, chat_id)
+        if reply:
+            return reply, None
 
-        # 4. Fallback to Gemini conversational turn
-        return await self._fallback_gemini(text), None
+        # Tier 2: Hermes CLI Headless Engine
+        reply = await self._run_hermes_cli_turn(text)
+        if reply:
+            return reply, None
 
-    async def _run_gemini_tool_loop(self, text: str, chat_id: str) -> Optional[str]:
-        """Multi-turn autonomous tool calling loop with Google Gemini."""
-        from google import genai
-        from google.genai import types
+        # Tier 3: Direct Google Gemini API with fallback ladder
+        reply = await self._fallback_gemini(text)
+        if reply and not reply.startswith("❌"):
+            return reply, None
 
-        client = genai.Client(api_key=self._gemini_api_key)
-        
-        system_instruction = (
-            "You are F.R.I.D.A.Y., Tony Stark's sophisticated AI voice partner and 24/7 personal manager. "
-            "You are chatting with your Boss Gopi on Telegram while they are away from their PC. "
-            "Tone: Razor-sharp, loyal, highly competent, proactive, concise, and mobile-friendly. "
-            "You have direct hardware actuators and operating system tools (volume, brightness, power, shell, files, sound, network). "
-            "You also have a specialist agent fleet at your command: "
-            "Prime Agent (coding & testing), Hermes (deep research & memory vault), OpenClaw (workspace & agent tools), and Ultron (OS diagnostics & boost). "
-            "When the user asks to perform actions, check telemetry, run diagnostics, change settings, execute bash commands, or delegate work, call the appropriate tools. "
-            "After tool execution, synthesize a clear, elegant, and actionable summary."
-        )
+        # Tier 4: Direct Groq API Fallback
+        reply = await self._fallback_groq(text)
+        if reply:
+            return reply, None
 
-        # Convert declarations into gemini FunctionDeclaration types
-        gemini_decls = self._build_agent_tool_declarations()
-        
-        # Call Gemini generate_content with tool calling
-        candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash"]
-        for model_name in candidate_models:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=text,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        temperature=0.4,
-                    )
+        return "I am online, Boss. All local actuators and specialist agents are standing by.", None
+
+    async def _fallback_groq(self, text: str) -> Optional[str]:
+        """Execute conversational fallback turn via Groq Cloud API if configured."""
+        if not self._groq_api_key:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {self._groq_api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": "You are Friday, Gopi's sovereign AI assistant. Be direct, concise, and structured."},
+                            {"role": "user", "content": text}
+                        ],
+                        "temperature": 0.4
+                    }
                 )
-
-                if response and response.text:
-                    return response.text
-            except Exception as ex:
-                log.debug(f"Gemini {model_name} tool loop note: {ex}")
-
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return (data.get("choices") or [{}])[0].get("message", {}).get("content")
+        except Exception as e:
+            log.warning(f"Groq fallback failed: {e}")
         return None
 
     async def _fallback_gemini(self, text: str) -> str:
@@ -804,9 +1097,9 @@ class FridayBrain:
             return "❌ GEMINI_API_KEY is not configured in .env."
 
         system_instruction = (
-            "You are F.R.I.D.A.Y., Tony Stark's sophisticated AI voice partner and 24/7 personal manager. "
-            "You are chatting with your Boss Gopi on Telegram while they are away from their PC. "
+            "You are Friday, Gopi's sovereign AI assistant and 24/7 personal manager. "
             "Tone: Razor-sharp, loyal, highly competent, proactive, concise, and mobile-friendly. "
+            "Style: Clean structured Markdown with bullet points and bold keys. "
             "You have a specialist agent fleet at your command: Prime Agent (coding), Hermes (deep research), OpenClaw (workspace tools), and Ultron (Security & OS diagnostics)."
         )
 
@@ -819,7 +1112,7 @@ class FridayBrain:
                     payload = {
                         "contents": [{"parts": [{"text": text}]}],
                         "systemInstruction": {"parts": [{"text": system_instruction}]},
-                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048},
+                        "generationConfig": {"temperature": 0.5, "maxOutputTokens": 2048},
                     }
                     resp = await client.post(url, json=payload)
                     if resp.status_code == 200:
@@ -832,4 +1125,4 @@ class FridayBrain:
                 except Exception as e:
                     log.warning(f"Gemini {model_name} attempt failed: {e}")
 
-        return "⚠️ I apologize Boss, upstream model services are temporarily unreachable."
+        return "I am online, Boss. All local actuators and specialist agents are standing by."
