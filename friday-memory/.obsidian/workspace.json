@@ -11,14 +11,10 @@
             "id": "1f64aace0a17054c",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "INDEX.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "INDEX"
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
             }
           }
         ]
@@ -184,6 +180,7 @@
   },
   "active": "1f64aace0a17054c",
   "lastOpenFiles": [
+    "INDEX.md",
     "Memory/Daily Logs/2026-06-21.md",
     "Memory/Daily Logs/2026-06-26.md",
     "Memory/Daily Logs/2026-06-28.md",
@@ -214,7 +211,6 @@
     "Memory/Daily Logs/2026-06-24.md.tmp",
     "Memory/Daily Logs/2026-06-26.md.tmp",
     "Memory/Daily Logs/2026-06-21.md.tmp",
-    "Memory/Task Memory/Task Documentation Automation.md",
     "Memory/Daily Logs/2026-06-19.md.tmp",
     "scripts/memory_graph_linker.py",
     "test_vault/Memory/Instruction Memory",

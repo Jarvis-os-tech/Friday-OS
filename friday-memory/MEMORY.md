@@ -34,3 +34,4 @@
 - If a command succeeds, state the outcome directly. If it fails, report the exact error clearly.
 - § [OPERATOR_PROFILE] obsidian_sync_folder: friday-memory
 - § [SYSTEM] [[facts/test_key|test_key]]: test_value
+- § [TEST] [[facts/test_compat|test_compat]]: backward compatibility verified

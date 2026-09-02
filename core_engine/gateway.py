@@ -336,8 +336,24 @@ def _get_groq_tools() -> List[Dict[str, Any]]:
         return []
 
 
+_http_session: Optional[aiohttp.ClientSession] = None
+
+async def _get_http_session() -> aiohttp.ClientSession:
+    """Return persistent aiohttp ClientSession with high-throughput TCP connection pool."""
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        connector = aiohttp.TCPConnector(
+            limit=100,
+            keepalive_timeout=60,
+            enable_cleanup_closed=True,
+            ttl_dns_cache=300
+        )
+        _http_session = aiohttp.ClientSession(connector=connector)
+    return _http_session
+
+
 async def _execute_groq_turn(groq_key: str, text: str) -> Optional[str]:
-    """Execute ultra-fast tool-calling turn with Groq."""
+    """Execute ultra-fast tool-calling turn with Groq using pooled TLS connections and parallel tool dispatch."""
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {groq_key}",
@@ -357,58 +373,60 @@ async def _execute_groq_turn(groq_key: str, text: str) -> Optional[str]:
         {"role": "user", "content": text},
     ]
 
-    async with aiohttp.ClientSession() as session:
-        payload: Dict[str, Any] = {
-            "model": "qwen/qwen3.8-27b",
-            "messages": messages,
-            "temperature": 0.5,
+    session = await _get_http_session()
+    payload: Dict[str, Any] = {
+        "model": "qwen/qwen3.8-27b",
+        "messages": messages,
+        "temperature": 0.4,
+    }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+
+    async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+        if resp.status != 200:
+            err_text = await resp.text()
+            log.warning(f"Groq tool call error ({resp.status}): {err_text[:200]}")
+            return None
+        data = await resp.json()
+
+    choice = data["choices"][0]["message"]
+    tool_calls = choice.get("tool_calls", [])
+
+    if not tool_calls:
+        return choice.get("content")
+
+    log.info(f"⚡ Groq Fast Tool Calling triggered {len(tool_calls)} tool(s) in parallel!")
+    act = _get_actuator()
+
+    # Dispatch ALL tools concurrently in parallel for minimum latency
+    async def _run_single_tool(tc: Dict[str, Any]) -> Dict[str, Any]:
+        fn_name = tc["function"]["name"]
+        try:
+            fn_args = json.loads(tc["function"]["arguments"])
+        except Exception:
+            fn_args = {}
+        log.info(f"-> Concurrently executing tool: {fn_name}({fn_args})")
+        res = await act.dispatch_tool(fn_name, fn_args)
+        return {
+            "role": "tool",
+            "tool_call_id": tc.get("id", "call_1"),
+            "name": fn_name,
+            "content": json.dumps(res)[:2000]
         }
-        if tools:
-            payload["tools"] = tools
-            payload["tool_choice"] = "auto"
 
-        async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                err_text = await resp.text()
-                log.warning(f"Groq tool call error ({resp.status}): {err_text[:200]}")
-                return None
-            data = await resp.json()
+    tool_results = await asyncio.gather(*[_run_single_tool(tc) for tc in tool_calls])
 
-        choice = data["choices"][0]["message"]
-        tool_calls = choice.get("tool_calls", [])
-
-        if not tool_calls:
-            return choice.get("content")
-
-        log.info(f"⚡ Groq Fast Tool Calling triggered {len(tool_calls)} tool(s)!")
-        tool_results = []
-        for tc in tool_calls:
-            fn_name = tc["function"]["name"]
-            try:
-                fn_args = json.loads(tc["function"]["arguments"])
-            except Exception:
-                fn_args = {}
-            
-            log.info(f"-> Executing tool: {fn_name}({fn_args})")
-            act = _get_actuator()
-            result = await act.dispatch_tool(fn_name, fn_args)
-            tool_results.append({
-                "role": "tool",
-                "tool_call_id": tc.get("id", "call_1"),
-                "name": fn_name,
-                "content": json.dumps(result)[:2000]
-            })
-
-        # Send tool results back for final summary synthesis
-        second_payload = {
-            "model": "qwen/qwen3.8-27b",
-            "messages": messages + [choice] + tool_results,
-            "temperature": 0.5,
-        }
-        async with session.post(url, json=second_payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp2:
-            if resp2.status == 200:
-                data2 = await resp2.json()
-                return data2["choices"][0]["message"].get("content")
+    # Send tool results back for final summary synthesis
+    second_payload = {
+        "model": "qwen/qwen3.8-27b",
+        "messages": messages + [choice] + list(tool_results),
+        "temperature": 0.4,
+    }
+    async with session.post(url, json=second_payload, headers=headers, timeout=aiohttp.ClientTimeout(total=8)) as resp2:
+        if resp2.status == 200:
+            data2 = await resp2.json()
+            return data2["choices"][0]["message"].get("content")
 
     return None
 

@@ -98,14 +98,14 @@ class GeminiLiveSession:
                     "parts": [{"text": system_instruction}]
                 },
                 "tools": [{"functionDeclarations": tools}],
-                # Best-practice Live config (mirrors server.ts)
+                # Ultra-low latency voice activity detection
                 "realtimeInputConfig": {
                     "automaticActivityDetection": {
                         "disabled": False,
                         "startOfSpeechSensitivity": 1,  # HIGH
                         "endOfSpeechSensitivity": 1,    # HIGH
-                        "prefixPaddingMs": 80,
-                        "silenceDurationMs": 350
+                        "prefixPaddingMs": 40,
+                        "silenceDurationMs": 180
                     }
                 },
                 "inputAudioTranscription": {},
