@@ -138,10 +138,10 @@ class FridayBrain:
                 duration_ms=duration,
             )
             await ag_ui_bridge.emit_agent_state("completed", agent="prime")
-            return f"⭐️ <b>Prime Agent Completed</b>\n\n{output[:3500]}"
+            return f"🤖 **Prime Agent**\n`Task: {prompt[:80]}`\n\n{output[:3500]}"
         except asyncio.TimeoutError:
             await ag_ui_bridge.emit_agent_state("error", agent="prime")
-            return "⏱️ <b>Prime Agent Notice</b>: Coding task timed out after 5 minutes."
+            return f"🤖 **Prime Agent**\n`Task: {prompt[:80]}`\n\n⚠️ Coding task timed out after 5 minutes."
         except Exception as e:
             log.error(f"Prime Agent error: {e}")
             await ag_ui_bridge.emit_agent_state("error", agent="prime")
@@ -151,7 +151,7 @@ class FridayBrain:
     async def execute_hermes_task(self, prompt: str, chat_id: str) -> str:
         """Dispatch deep research or multi-agent task to Hermes Intelligence."""
         if not prompt.strip():
-            return "Usage: <code>/task &lt;prompt&gt;</code> — e.g. <code>/task Research latest breakthroughs in multi-agent orchestration</code>"
+            return "Usage: `task <prompt>` — e.g. `research latest breakthroughs in multi-agent orchestration`"
 
         task_id = f"hermes_{int(time.time())}"
         await ag_ui_bridge.emit_agent_state("thinking", agent="hermes")
@@ -177,7 +177,7 @@ class FridayBrain:
                             duration_ms=duration
                         )
                         await ag_ui_bridge.emit_agent_state("completed", agent="hermes")
-                        return f"🔹 <b>Hermes Intelligence</b>\n\n{reply[:3500]}"
+                        return f"🔍 **Hermes Intelligence**\n`Task: {prompt[:80]}`\n\n{reply[:3500]}"
         except Exception:
             pass
 
@@ -217,7 +217,7 @@ class FridayBrain:
                         duration_ms=duration
                     )
                     await ag_ui_bridge.emit_agent_state("completed", agent="hermes")
-                    return f"🔹 <b>Hermes Intelligence Complete</b>\n\n{output[:3500]}"
+                    return f"🔍 **Hermes Intelligence**\n`Task: {prompt[:80]}`\n\n{output[:3500]}"
             finally:
                 if os.path.exists(tmp_path):
                     os.unlink(tmp_path)
@@ -227,12 +227,12 @@ class FridayBrain:
         # 3. Fallback to Gemini 3.7 / 2.5 Flash
         gemini_reply = await self._fallback_gemini(prompt)
         await ag_ui_bridge.emit_agent_state("completed", agent="friday")
-        return gemini_reply
+        return f"🔍 **Hermes Intelligence**\n`Task: {prompt[:80]}`\n\n{gemini_reply[:3500]}"
 
     async def execute_openclaw_task(self, prompt: str, chat_id: str) -> str:
         """Dispatch task to OpenClaw gateway & workspace tools."""
         if not prompt.strip():
-            return "Usage: <code>/openclaw &lt;prompt&gt;</code> — e.g. <code>/openclaw Inspect workspace tools and system environment</code>"
+            return "Usage: `openclaw <prompt>` — e.g. `openclaw inspect workspace tools and environment`"
 
         task_id = f"openclaw_{int(time.time())}"
         await ag_ui_bridge.emit_agent_state("thinking", agent="openclaw")
@@ -258,7 +258,7 @@ class FridayBrain:
                         duration_ms=duration
                     )
                     await ag_ui_bridge.emit_agent_state("completed", agent="openclaw")
-                    return f"🦞 <b>OpenClaw Gateway Completed</b>\n\n{text[:3500]}"
+                    return f"🦞 **OpenClaw Gateway**\n`Task: {prompt[:80]}`\n\n{text[:3500]}"
                 else:
                     err_msg = f"OpenClaw gateway returned HTTP {resp.status_code}"
                     log.warning(err_msg)
@@ -269,9 +269,9 @@ class FridayBrain:
         workspace_tools = self._openclaw_dir / "workspace" / "TOOLS.md"
         tools_summary = ""
         if workspace_tools.exists():
-            tools_summary = f"\n\n<i>OpenClaw workspace active at: {self._openclaw_dir}/workspace</i>"
+            tools_summary = f"\n\n*OpenClaw workspace active at: `{self._openclaw_dir}/workspace`*"
 
-        return f"🦞 <b>OpenClaw Gateway</b>: Task received: '{prompt}'{tools_summary}\n\nProcessed via Friday core bridge."
+        return f"🦞 **OpenClaw Gateway**\n`Task: {prompt[:80]}`{tools_summary}\n\nProcessed via Friday core bridge."
 
     async def execute_ultron_boost(self) -> str:
         """Run Ultron RAM & cache reclamation."""
@@ -292,17 +292,17 @@ class FridayBrain:
 
             await ag_ui_bridge.emit_display_card("ultron_boost", "Ultron System Boost", {"message": result_str})
             await ag_ui_bridge.emit_agent_state("idle", agent="ultron")
-            return f"⚡ <b>Ultron Engine Boost Complete</b>\n\n{result_str}"
+            return f"⚡ **Ultron Engine**\n`Action: OS Optimization & RAM Purge`\n\n{result_str}"
         except Exception as e:
             await ag_ui_bridge.emit_agent_state("error", agent="ultron")
-            return f"❌ <b>Ultron Boost Error</b>: {e}"
+            return f"❌ **Ultron Engine**\n`Action: OS Optimization`\n\nError: {e}"
 
     # ── Hardware & Direct System Controls ─────────────────────────────
 
     async def execute_shell_command(self, command: str) -> str:
         """Execute a direct bash command on the host."""
         if not command.strip():
-            return "Usage: <code>/sh &lt;command&gt;</code> — e.g. <code>/sh df -h</code> or <code>/sh uptime</code>"
+            return "Usage: `sh <command>` — e.g. `df -h` or `uptime`"
 
         act = self._get_actuator()
         start_t = time.time()
@@ -314,7 +314,7 @@ class FridayBrain:
             if not stdout and not stderr:
                 stdout = "Command completed with no output."
             output = f"{stdout}\n{stderr}".strip()
-            return f"🖥️ <b>Shell Command:</b> <code>{command}</code>\n\n<pre><code>{output[:3500]}</code></pre>"
+            return f"💻 **Terminal**\n`{command}`\n\n```\n{output[:3500]}\n```"
         
         proc = await asyncio.create_subprocess_shell(
             command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -323,7 +323,7 @@ class FridayBrain:
         out_str = stdout.decode("utf-8", errors="replace").strip()
         err_str = stderr.decode("utf-8", errors="replace").strip()
         result = f"{out_str}\n{err_str}".strip() or "Done."
-        return f"🖥️ <b>Shell:</b> <code>{command}</code>\n\n<pre><code>{result[:3500]}</code></pre>"
+        return f"💻 **Terminal**\n`{command}`\n\n```\n{result[:3500]}\n```"
 
     async def execute_screenshot(self) -> Tuple[Optional[str], str]:
         """Capture screen and return (image_path, text_summary)."""
@@ -333,7 +333,7 @@ class FridayBrain:
             res = await act.dispatch_tool("take_screenshot", {"outputPath": out_path})
             img = res.get("imagePath") or out_path
             if os.path.exists(img):
-                return img, "📸 <b>Desktop Screenshot Captured</b>"
+                return img, "📸 **Desktop Screenshot**\n`Status: Captured & Verified`"
         
         # Fallback to scrot / grim / gnome-screenshot
         for cmd in [f"gnome-screenshot -f {out_path}", f"grim {out_path}", f"scrot {out_path}"]:
@@ -341,11 +341,11 @@ class FridayBrain:
                 proc = await asyncio.create_subprocess_shell(cmd)
                 await proc.communicate()
                 if os.path.exists(out_path):
-                    return out_path, "📸 <b>Desktop Screenshot Captured</b>"
+                    return out_path, "📸 **Desktop Screenshot**\n`Status: Captured & Verified`"
             except Exception:
                 pass
 
-        return None, "❌ Failed to capture screenshot. No display capture tool available."
+        return None, "📸 **Desktop Screenshot**\n`Status: Failed — no capture backend available`"
 
     async def set_volume(self, value: str) -> str:
         """Set speaker volume percentage (0-150) or mute/unmute."""
@@ -354,19 +354,19 @@ class FridayBrain:
         if v_str in ("mute", "0%"):
             if act:
                 await act.dispatch_tool("set_system_volume", {"mute": True})
-            return "🔇 <b>Audio Output Muted</b>"
+            return "🔇 **System Audio**\n`Status: Muted`"
         elif v_str == "unmute":
             if act:
                 await act.dispatch_tool("set_system_volume", {"mute": False})
-            return "🔊 <b>Audio Output Unmuted</b>"
+            return "🔊 **System Audio**\n`Status: Unmuted`"
         
         try:
             pct = int(v_str.replace("%", ""))
             if act:
                 await act.dispatch_tool("set_system_volume", {"volume": pct})
-            return f"🔊 <b>Volume Adjusted to {pct}%</b>"
+            return f"🔊 **System Audio**\n`Status: Volume adjusted to {pct}%`"
         except ValueError:
-            return "Usage: <code>/volume &lt;0-150&gt;</code> or <code>/mute</code> / <code>/unmute</code>"
+            return "Usage: `volume <0-150>` or `mute` / `unmute`"
 
     async def set_brightness(self, value: str) -> str:
         """Set screen brightness percentage (1-100)."""
@@ -376,14 +376,14 @@ class FridayBrain:
             pct = max(1, min(100, pct))
             if act:
                 await act.dispatch_tool("set_display_brightness", {"brightness": pct})
-            return f"☀️ <b>Screen Brightness Adjusted to {pct}%</b>"
+            return f"☀️ **Display Brightness**\n`Status: Adjusted to {pct}%`"
         except ValueError:
-            return "Usage: <code>/brightness &lt;1-100&gt;</code>"
+            return "Usage: `brightness <1-100>`"
 
     async def kill_process(self, target: str) -> str:
         """Kill process by name or PID."""
         if not target.strip():
-            return "Usage: <code>/kill &lt;process name or PID&gt;</code>"
+            return "Usage: `kill <process name or PID>`"
 
         act = self._get_actuator()
         if act:
@@ -391,8 +391,8 @@ class FridayBrain:
                 res = await act.dispatch_tool("manage_process", {"pid": int(target), "signal": "SIGKILL"})
             else:
                 res = await act.dispatch_tool("manage_process", {"processName": target.strip(), "signal": "SIGKILL"})
-            return f"🛑 <b>Process Termination</b>: {res.get('result') or res.get('error') or 'Signal sent'}"
-        return f"🛑 Signal sent to {target}"
+            return f"🛑 **Process Manager**\n`Target: {target}` — {res.get('result') or res.get('error') or 'Signal sent'}"
+        return f"🛑 **Process Manager**\n`Target: {target}` — Signal sent"
 
     async def get_system_status(self) -> str:
         """Compile comprehensive 24/7 telemetry and fleet status report."""
@@ -474,7 +474,7 @@ class FridayBrain:
     async def set_reminder(self, text: str) -> str:
         """Store reminder in Friday memory vault."""
         if not text.strip():
-            return "Usage: <code>/remind &lt;reminder text&gt;</code>"
+            return "Usage: `remind <reminder text>`"
 
         mem = self._get_memory()
         if mem:
@@ -486,28 +486,28 @@ class FridayBrain:
                     source="telegram",
                 )
                 await ag_ui_bridge.emit_display_card("reminder_created", "Reminder Created", {"text": text})
-                return f"⏰ <b>Reminder Set</b>\n\n{text.strip()}"
+                return f"⏰ **Reminder Created**\n`{text.strip()}`"
             except Exception as e:
-                return f"❌ Failed to set reminder: {e}"
+                return f"❌ **Reminder Error**\n`{e}`"
 
-        return f"⏰ Reminder noted: {text}"
+        return f"⏰ **Reminder Noted**\n`{text}`"
 
     async def recall_memory(self, query: str) -> str:
         """Search universal memory vault."""
         if not query.strip():
-            return "Usage: <code>/recall &lt;search query&gt;</code>"
+            return "Usage: `recall <search query>`"
 
         mem = self._get_memory()
         if mem:
             try:
                 results = mem.search(query, limit=5)
                 if results:
-                    items = [f"• <b>{r.get('key', 'Note')}</b>: {r.get('value', '')}" for r in results]
-                    return f"🧠 <b>Memory Recall: '{query}'</b>\n\n" + "\n".join(items)
-                return f"🧠 No memory entries found matching '{query}'."
+                    items = [f"• **{r.get('key', 'Note')}:** {r.get('value', '')}" for r in results]
+                    return f"🧠 **Memory Recall**\n`Query: {query}`\n\n" + "\n".join(items)
+                return f"🧠 **Memory Recall**\n`Query: {query}`\n\nNo matching entries found."
             except Exception as e:
-                return f"❌ Memory search error: {e}"
-        return f"🧠 Vault offline."
+                return f"❌ **Memory Search Error**\n`{e}`"
+        return "🧠 **Memory Recall**\nVault offline."
 
     # ── Autonomous Tool-Calling Agent Loop ─────────────────────────────
 
@@ -611,24 +611,25 @@ class FridayBrain:
     async def process_message(self, msg: TelegramMessage) -> Tuple[str, Optional[str]]:
         """
         Process any message with full system control, multi-agent routing, or autonomous tool calling.
-        Returns (reply_html_text, optional_image_path_to_send).
+        Returns (reply_markdown_text, optional_image_path_to_send).
         """
         text = (msg.text or "").strip()
         chat_id = msg.chat_id
+        lower_t = text.lower()
 
-        # 1. Handle Slash Commands & Fast Shortcuts
+        # 1. Handle Slash Commands & Fast Shortcuts (Backward compatibility)
         if msg.is_command or text.startswith("/"):
             parts = text.split(None, 1)
             cmd = parts[0].lower()
             args = parts[1] if len(parts) > 1 else ""
 
-            if cmd in ("/status", "/health"):
+            if cmd in ("/status", "/health", "/telemetry"):
                 return await self.get_system_status(), None
-            elif cmd in ("/today", "/agenda"):
+            elif cmd in ("/today", "/agenda", "/schedule"):
                 return await self.get_agenda_report(), None
             elif cmd in ("/code", "/prime"):
                 return await self.execute_code_task(args, chat_id), None
-            elif cmd in ("/task", "/hermes"):
+            elif cmd in ("/task", "/hermes", "/research"):
                 return await self.execute_hermes_task(args, chat_id), None
             elif cmd in ("/openclaw", "/claw"):
                 return await self.execute_openclaw_task(args, chat_id), None
@@ -656,40 +657,95 @@ class FridayBrain:
             elif cmd in ("/digest",):
                 return await self.get_system_status(), None
             elif cmd in ("/clear", "/reset"):
-                return "🔄 <b>Session Reset</b>: Memory context refreshed and ready for new instructions, Boss.", None
+                return "🔄 **Session Reset:** Memory context refreshed and ready for new instructions, Boss.", None
             elif cmd in ("/help", "/start"):
                 return (
-                    "🤖 <b>Friday OS — Sovereign Telegram Gateway</b>\n\n"
-                    "I am F.R.I.D.A.Y., your autonomous AI Personal Manager & Chief of Staff.\n"
-                    "I have full control over your Linux desktop and multi-agent specialist fleet.\n\n"
-                    "<b>🖥️ System Control Commands:</b>\n"
-                    "• /status — 24/7 telemetry, CPU, RAM, battery, thermals & fleet status\n"
-                    "• /sh &lt;command&gt; — Execute Linux shell command directly\n"
-                    "• /screenshot — Capture current desktop screen & send photo\n"
-                    "• /volume &lt;0-150&gt; or /mute /unmute — Audio controls\n"
-                    "• /brightness &lt;1-100&gt; — Screen brightness\n"
-                    "• /kill &lt;process/PID&gt; — Terminate process\n\n"
-                    "<b>🤖 Specialist Fleet Commands:</b>\n"
-                    "• /code &lt;task&gt; — Prime Agent software engineering & testing\n"
-                    "• /task &lt;prompt&gt; — Hermes Intelligence research & vault reasoning\n"
-                    "• /openclaw &lt;prompt&gt; — OpenClaw gateway & workspace tools\n"
-                    "• /boost — Ultron kernel optimization & RAM reclamation\n\n"
-                    "<b>🧠 Personal Agenda & Memory:</b>\n"
-                    "• /today — Daily priorities, reminders & agenda snapshot\n"
-                    "• /remind &lt;text&gt; — Save reminder to universal vault\n"
-                    "• /recall &lt;query&gt; — Search persistent memory vault\n\n"
-                    "<i>Or simply send any natural language command (e.g. 'turn down volume to 30%', 'take a screenshot', 'run a diagnostic', 'write a python script') to let Friday act autonomously!</i>"
+                    "🤖 **Friday OS — Sovereign Gateway**\n\n"
+                    "I am Friday, your autonomous AI Operating System & Manager.\n"
+                    "Direct natural language control is active across all tools & agents.\n\n"
+                    "**Specialist Fleet:**\n"
+                    "• **Prime Agent:** Coding, engineering, tests & scripts\n"
+                    "• **Hermes Intelligence:** Deep research, Obsidian vault & multi-turn reasoning\n"
+                    "• **OpenClaw Gateway:** Workspace tools & environment actions\n"
+                    "• **Ultron Engine:** OS optimization, kernel telemetry & thermals\n\n"
+                    "**Direct Control Examples:**\n"
+                    "• `git status` or `df -h` — Runs host terminal command\n"
+                    "• `take a screenshot` — Captures desktop screen\n"
+                    "• `write a python script to...` — Delegates to Prime Agent\n"
+                    "• `research latest developments in...` — Delegates to Hermes\n"
+                    "• `check system status` — Compiles 24/7 telemetry"
                 ), None
-            else:
-                return f"❓ Unknown command: <code>{cmd}</code>\n\nSend /help to see all available commands.", None
 
-        # 2. Natural Language Intent Check for Screenshot
-        lower_t = text.lower()
-        if any(phrase in lower_t for phrase in ["take a screenshot", "show my screen", "capture screen", "screenshot"]):
+        # 2. Direct Natural Language Intent Routing (No /commands required)
+
+        # A. Screenshot / Display Capture
+        if any(p in lower_t for p in ["take a screenshot", "show my screen", "capture screen", "screenshot", "screen capture"]):
             img_path, summary = await self.execute_screenshot()
             return summary, img_path
 
-        # 3. Autonomous Tool-Calling Turn via Gemini (with full system tools)
+        # B. Direct Terminal / Bash Execution
+        # Common shell command prefixes or explicit run/exec phrases
+        shell_prefixes = (
+            "git ", "npm ", "pnpm ", "cargo ", "python ", "python3 ", "node ", "docker ",
+            "systemctl ", "journalctl ", "curl ", "wget ", "ls ", "cat ", "grep ", "find ",
+            "ps ", "top ", "df ", "free ", "uptime ", "mkdir ", "rm ", "cp ", "mv ",
+            "sudo ", "chmod ", "chown ", "ss ", "netstat ", "ip ", "ping ", "kill "
+        )
+        if text.startswith(shell_prefixes) or text in ("git status", "uptime", "df -h", "free -m", "ls", "ps aux"):
+            return await self.execute_shell_command(text), None
+
+        if lower_t.startswith(("run command:", "run command", "execute command:", "execute command", "run bash:", "run bash", "run terminal:", "run terminal")):
+            cmd_part = text.split(":", 1)[-1].strip() if ":" in text else text.split(" ", 2)[-1].strip()
+            return await self.execute_shell_command(cmd_part), None
+
+        # C. System Telemetry & Status
+        if lower_t in ("status", "system status", "health", "check status", "telemetry", "how is the system", "how is system", "check telemetry", "fleet status"):
+            return await self.get_system_status(), None
+
+        # D. Agenda & Daily Schedule
+        if lower_t in ("agenda", "today", "today's agenda", "today agenda", "my schedule", "what are my tasks", "today's tasks", "tasks today"):
+            return await self.get_agenda_report(), None
+
+        # E. Ultron System Boost / RAM Reclamation
+        if any(p in lower_t for p in ["boost system", "ultron boost", "free ram", "clear caches", "drop caches", "optimize ram", "boost performance"]):
+            return await self.execute_ultron_boost(), None
+
+        # F. Reminders
+        if lower_t.startswith(("remind me to ", "set reminder: ", "set reminder ", "remind me: ")):
+            rem_text = text.split("to ", 1)[-1] if "to " in lower_t else (text.split(":", 1)[-1] if ":" in text else text.split(" ", 2)[-1])
+            return await self.set_reminder(rem_text), None
+
+        # G. Memory Recall
+        if lower_t.startswith(("recall ", "search memory for ", "what do you remember about ", "memory search ")):
+            query_text = text.split("for ", 1)[-1] if "for " in lower_t else (text.split("about ", 1)[-1] if "about " in lower_t else text.split(" ", 1)[-1])
+            return await self.recall_memory(query_text), None
+
+        # H. Volume & Brightness
+        if lower_t in ("mute", "unmute"):
+            return await self.set_volume(lower_t), None
+        if lower_t.startswith(("set volume to ", "volume to ", "volume ")):
+            vol_val = lower_t.split("to ", 1)[-1] if "to " in lower_t else lower_t.split("volume ", 1)[-1]
+            return await self.set_volume(vol_val), None
+        if lower_t.startswith(("set brightness to ", "brightness to ", "brightness ")):
+            bri_val = lower_t.split("to ", 1)[-1] if "to " in lower_t else lower_t.split("brightness ", 1)[-1]
+            return await self.set_brightness(bri_val), None
+
+        # I. Prime Agent Software Engineering Routing
+        if lower_t.startswith(("write code for ", "build a ", "create a script ", "implement ", "fix bug in ", "write python code ", "write typescript code ", "code: ")):
+            code_prompt = text.split(":", 1)[-1].strip() if lower_t.startswith("code:") else text
+            return await self.execute_code_task(code_prompt, chat_id), None
+
+        # J. Hermes Intelligence Research Routing
+        if lower_t.startswith(("research ", "deep dive into ", "investigate ", "search papers on ", "explain in detail ", "task: ", "hermes: ")):
+            task_prompt = text.split(":", 1)[-1].strip() if (lower_t.startswith("task:") or lower_t.startswith("hermes:")) else text
+            return await self.execute_hermes_task(task_prompt, chat_id), None
+
+        # K. OpenClaw Workspace Routing
+        if lower_t.startswith(("openclaw: ", "openclaw ", "claw: ", "workspace task: ")):
+            claw_prompt = text.split(":", 1)[-1].strip() if ":" in text else text.split(" ", 1)[-1]
+            return await self.execute_openclaw_task(claw_prompt, chat_id), None
+
+        # 3. Autonomous Multi-Turn Tool-Calling Turn (Gemini with all registered tools)
         if self._gemini_api_key:
             try:
                 reply = await self._run_gemini_tool_loop(text, chat_id)
@@ -698,7 +754,7 @@ class FridayBrain:
             except Exception as e:
                 log.warning(f"Gemini tool loop error: {e}")
 
-        # 4. Fallback to Groq / Gemini basic conversational turn
+        # 4. Fallback to Gemini conversational turn
         return await self._fallback_gemini(text), None
 
     async def _run_gemini_tool_loop(self, text: str, chat_id: str) -> Optional[str]:
