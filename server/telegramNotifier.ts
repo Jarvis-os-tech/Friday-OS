@@ -16,9 +16,9 @@
 
 // ── Configuration ───────────────────────────────────────────────
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
-const TELEGRAM_API_BASE = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const getBotToken = () => (process.env.TELEGRAM_BOT_TOKEN || "").trim();
+const getChatId = () => (process.env.TELEGRAM_CHAT_ID || "").trim();
+const getApiBase = () => `https://api.telegram.org/bot${getBotToken()}`;
 
 // Rate limiting: max 1 message per 3 seconds (Telegram limit is 30/sec, but we're conservative)
 let lastSentAt = 0;
@@ -44,7 +44,7 @@ export interface TelegramNotification {
  * Check if Telegram notifications are configured and ready to use.
  */
 export function isTelegramConfigured(): boolean {
-  return !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID);
+  return !!(getBotToken() && getChatId());
 }
 
 /**
@@ -59,20 +59,19 @@ function formatMessage(notification: TelegramNotification): string {
   };
 
   const emoji = priorityEmoji[notification.priority || "normal"];
-  const category = notification.category ? `\`${notification.category}\`` : "";
-  const header = `${emoji} *${escapeMarkdown(notification.title)}*`;
-  const categoryLine = category ? `  ${category}` : "";
+  const categoryStr = notification.category ? `[${notification.category.toUpperCase()}] ` : "";
+  const header = `${emoji} **${escapeMarkdown(categoryStr)}${escapeMarkdown(notification.title)}**`;
 
-  let msg = `${header}${categoryLine}\n\n${escapeMarkdown(notification.body)}`;
+  let msg = `${header}\n\n${escapeMarkdown(notification.body)}`;
 
-  // Add timestamp
+  // Add clean timestamp
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Asia/Kolkata",
   });
-  msg += `\n\n🕐 _${timeStr} IST_`;
+  msg += `\n\n*${timeStr} IST*`;
 
   return msg;
 }
@@ -90,7 +89,8 @@ function escapeMarkdown(text: string): string {
  * Returns true if sent successfully, false otherwise.
  */
 export async function sendTelegramNotification(
-  notification: TelegramNotification
+  notification: TelegramNotification,
+  chatId?: string | number
 ): Promise<boolean> {
   if (!isTelegramConfigured()) {
     console.warn(
@@ -107,10 +107,11 @@ export async function sendTelegramNotification(
   }
 
   const message = formatMessage(notification);
+  const targetChatId = chatId ? String(chatId) : getChatId();
 
   try {
     const payload: any = {
-      chat_id: TELEGRAM_CHAT_ID,
+      chat_id: targetChatId,
       text: message,
       parse_mode: "MarkdownV2",
       disable_notification: notification.priority === "low",
@@ -130,7 +131,7 @@ export async function sendTelegramNotification(
       });
     }
 
-    const response = await fetch(`${TELEGRAM_API_BASE}/sendMessage`, {
+    const response = await fetch(`${getApiBase()}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -150,7 +151,7 @@ export async function sendTelegramNotification(
       );
       // Fallback: try without MarkdownV2 if parsing fails
       if (result.description?.includes("can't parse")) {
-        return sendTelegramPlaintext(notification);
+        return sendTelegramPlaintext(notification, targetChatId);
       }
       return false;
     }
@@ -164,15 +165,17 @@ export async function sendTelegramNotification(
  * Fallback: send as plain text if MarkdownV2 parsing fails.
  */
 async function sendTelegramPlaintext(
-  notification: TelegramNotification
+  notification: TelegramNotification,
+  chatId?: string | number
 ): Promise<boolean> {
   try {
     const text = `${notification.title}\n\n${notification.body}`;
-    const response = await fetch(`${TELEGRAM_API_BASE}/sendMessage`, {
+    const targetChatId = chatId ? String(chatId) : getChatId();
+    const response = await fetch(`${getApiBase()}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: targetChatId,
         text,
         disable_notification: notification.priority === "low",
       }),
@@ -195,12 +198,15 @@ async function sendTelegramPlaintext(
 /**
  * Convenience: send a simple text message to Telegram.
  */
-export async function sendTelegramMessage(text: string): Promise<boolean> {
-  return sendTelegramNotification({
-    title: "Friday",
-    body: text,
-    priority: "normal",
-  });
+export async function sendTelegramMessage(text: string, chatId?: string | number): Promise<boolean> {
+  return sendTelegramNotification(
+    {
+      title: "Friday",
+      body: text,
+      priority: "normal",
+    },
+    chatId
+  );
 }
 
 /**
@@ -212,12 +218,12 @@ export async function notifyTaskComplete(
   durationMs?: number
 ): Promise<boolean> {
   const durationStr = durationMs
-    ? `${(durationMs / 1000).toFixed(1)}s`
-    : "unknown";
+    ? `Completed in ${(durationMs / 1000).toFixed(1)}s`
+    : "";
 
   return sendTelegramNotification({
-    title: `✅ Task Complete: ${taskTitle}`,
-    body: `${summary}\n\nDuration: ${durationStr}`,
+    title: `Task Complete`,
+    body: `✅ **${taskTitle}**\n\n${summary}${durationStr ? `\n\n*${durationStr}*` : ""}`,
     priority: "normal",
     category: "task",
   });
@@ -235,7 +241,6 @@ export async function notifyProactiveAlert(
     title: alertTitle,
     body: details,
     priority,
-    category: "proactive",
   });
 }
 
@@ -248,10 +253,10 @@ export async function sendTelegramChatAction(
   chatId?: string | number
 ): Promise<boolean> {
   if (!isTelegramConfigured()) return false;
-  const targetChatId = chatId ? String(chatId) : TELEGRAM_CHAT_ID;
+  const targetChatId = chatId ? String(chatId) : getChatId();
 
   try {
-    const response = await fetch(`${TELEGRAM_API_BASE}/sendChatAction`, {
+    const response = await fetch(`${getApiBase()}/sendChatAction`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -313,7 +318,7 @@ export async function verifyTelegramBot(): Promise<{
   }
 
   try {
-    const response = await fetch(`${TELEGRAM_API_BASE}/getMe`);
+    const response = await fetch(`${getApiBase()}/getMe`);
     const result = await response.json();
     if (result.ok) {
       return {
